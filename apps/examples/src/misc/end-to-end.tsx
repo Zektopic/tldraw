@@ -16,7 +16,7 @@ import {
 	useEditor,
 	useUniqueSafeId,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { EndToEndApi } from './EndToEndApi'
 ;(window as any).__tldraw_ui_event = { id: 'NOTHING_YET' }
 ;(window as any).__tldraw_editor_events = []

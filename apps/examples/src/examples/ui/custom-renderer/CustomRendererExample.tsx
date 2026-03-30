@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react'
 import { DefaultCanvas, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { CustomRenderer } from './CustomRenderer'
 
 export default function CustomRendererExample() {

@@ -1,5 +1,5 @@
 import { DefaultToolbar, TLComponents, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const components: TLComponents = {
 	Toolbar: () => <DefaultToolbar orientation="vertical" />,

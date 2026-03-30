@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Box, TLComponents, Tldraw, Vec, useEditor, useReactor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const CELL_SIZE = 32
 const COUNT = 100

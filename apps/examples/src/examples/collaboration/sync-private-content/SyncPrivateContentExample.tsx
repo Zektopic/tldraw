@@ -11,7 +11,7 @@ import {
 	useTools,
 	useValue,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { VisibilityOff, VisibilityOn } from '../../../icons/icons'
 import { Toggle } from './Toggle'
 import './style.css'

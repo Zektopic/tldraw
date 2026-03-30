@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { AssetRecordType, Editor, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 // There's a guide at the bottom of this file!
 
 export default function LocalImagesExample() {

@@ -1,5 +1,5 @@
 import { Tldraw, TldrawUiButton, TldrawUiIcon, tlenv, tlenvReactive, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './environment-detection.css'
 
 // [1]

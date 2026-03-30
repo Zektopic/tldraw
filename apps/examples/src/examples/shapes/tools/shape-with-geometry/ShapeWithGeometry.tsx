@@ -12,7 +12,7 @@ import {
 	resizeBox,
 	structuredClone,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const HOUSE_TYPE = 'house'
 

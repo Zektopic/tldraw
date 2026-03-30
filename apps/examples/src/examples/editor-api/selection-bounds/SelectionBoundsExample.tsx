@@ -1,5 +1,5 @@
 import { Editor, TLComponents, Tldraw, createShapeId, toRichText, track, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './selection-bounds.css'
 
 // There's a guide at the bottom of this file!

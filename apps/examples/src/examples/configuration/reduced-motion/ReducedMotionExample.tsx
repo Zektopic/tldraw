@@ -13,7 +13,7 @@ import {
 	useEditor,
 	usePrefersReducedMotion,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './reduced-motion.css'
 
 const PULSE_SHAPE_TYPE = 'pulse-shape'

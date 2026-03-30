@@ -1,5 +1,5 @@
 import { FrameShapeUtil, NoteShapeUtil, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const shapeUtils = [
 	// Enable colors for frame shapes

@@ -1,5 +1,5 @@
 import { Editor, TldrawEditor, createShapeId } from '@tldraw/editor'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { MiniBoxShapeUtil } from './MiniBoxShape'
 import { MiniSelectTool } from './MiniSelectTool'
 

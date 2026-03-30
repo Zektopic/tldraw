@@ -1,5 +1,5 @@
 import { Tldraw, TldrawProps } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // [1]
 const assetUrls: TldrawProps['assetUrls'] = {

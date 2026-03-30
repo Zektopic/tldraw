@@ -12,7 +12,7 @@ import {
 	TLShapeId,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { contents } from './contents'
 
 const DYNAMIC_SIZE_TYPE = 'dynamic-size'

@@ -1,6 +1,6 @@
 import { useSyncDemo } from '@tldraw/sync'
 import { Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { CounterShapeTool, CounterShapeUtil } from './CounterShape'
 import { components, uiOverrides } from './ui'
 

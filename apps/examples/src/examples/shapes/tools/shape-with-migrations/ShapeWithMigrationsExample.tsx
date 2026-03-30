@@ -10,7 +10,7 @@ import {
 	createShapePropsMigrationSequence,
 	resizeBox,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import snapshot from './snapshot.json'
 
 const MY_SHAPE_WITH_MIGRATIONS_TYPE = 'myshapewithmigrations' as const

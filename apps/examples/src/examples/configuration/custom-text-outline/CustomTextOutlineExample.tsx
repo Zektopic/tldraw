@@ -1,5 +1,5 @@
 import { ArrowShapeUtil, GeoShapeUtil, TextShapeUtil, Tldraw, toRichText } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // Configure the geo shape to disable outline
 const CustomGeoShapeUtil = GeoShapeUtil.configure({

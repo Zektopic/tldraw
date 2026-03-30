@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { BaseBoxShapeUtil, TLShape, Tldraw, createShapeId, useDelaySvgExport } from 'tldraw'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const AG_GRID_TYPE = 'ag-grid'
 

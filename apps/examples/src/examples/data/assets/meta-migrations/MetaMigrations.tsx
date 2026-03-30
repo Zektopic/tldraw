@@ -1,5 +1,5 @@
 import { Tldraw, createMigrationIds, createMigrationSequence } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { snapshot } from './snapshot'
 import { components } from './ui-overrides'
 

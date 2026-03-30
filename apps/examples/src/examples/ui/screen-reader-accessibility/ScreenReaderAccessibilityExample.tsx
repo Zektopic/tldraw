@@ -10,7 +10,7 @@ import {
 	useA11y,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './screen-reader-accessibility.css'
 
 const CARD_SHAPE_TYPE = 'note-card'

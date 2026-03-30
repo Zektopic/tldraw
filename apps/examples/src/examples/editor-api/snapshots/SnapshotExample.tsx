@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TLEditorSnapshot, Tldraw, getSnapshot, loadSnapshot, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import _jsonSnapshot from './snapshot.json'
 
 // There's a guide at the bottom of this file!

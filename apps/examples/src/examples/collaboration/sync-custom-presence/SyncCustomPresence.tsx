@@ -1,7 +1,7 @@
 import { useSyncDemo } from '@tldraw/sync'
 import { useEffect } from 'react'
 import { Tldraw, getDefaultUserPresence, useAtom } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function SyncCustomUserExample({ roomId }: { roomId: string }) {
 	// [1]

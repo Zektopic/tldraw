@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { ErrorShapeUtil } from './ErrorShape'
 
 // There's a guide at the bottom of this file!

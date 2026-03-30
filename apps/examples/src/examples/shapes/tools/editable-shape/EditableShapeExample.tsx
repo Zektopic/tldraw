@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { EditableShapeUtil } from './EditableShapeUtil'
 
 const customShapeUtils = [EditableShapeUtil]

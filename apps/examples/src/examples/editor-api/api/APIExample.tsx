@@ -8,7 +8,7 @@ import {
 	createShapeId,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { useEffect } from 'react'
 
 // There's a guide at the bottom of this file!

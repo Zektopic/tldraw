@@ -10,7 +10,7 @@ import {
 	useEditor,
 	useRelevantStyles,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const MY_SHAPE_WITH_CUSTOM_STYLES_TYPE = 'myshapewithcustomstyles'
 

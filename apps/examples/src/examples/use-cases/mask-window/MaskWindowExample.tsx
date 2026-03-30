@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { TLComponents, TLShape, Tldraw, createShapeId, useEditor, useQuickReactor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './mask-window.css'
 
 function MaskWindow() {

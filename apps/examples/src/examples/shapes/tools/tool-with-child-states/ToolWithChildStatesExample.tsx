@@ -8,7 +8,7 @@ import {
 	createShapeId,
 	toRichText,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // There's a guide at the bottom of this file!
 

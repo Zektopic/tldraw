@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Tldraw, track, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './custom-ui.css'
 
 // There's a guide at the bottom of this file!

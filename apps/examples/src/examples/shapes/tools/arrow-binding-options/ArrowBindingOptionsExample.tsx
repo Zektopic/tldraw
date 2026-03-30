@@ -1,5 +1,5 @@
 import { Tldraw, createShapeId, toRichText } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function ArrowBindingOptionsExample() {
 	return (

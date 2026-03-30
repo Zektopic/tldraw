@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Editor, EditorProvider, Tldraw, useEditor, useIsDarkMode, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './inspector-panel.css'
 
 // Inspector Panel Component that shows selected shape properties

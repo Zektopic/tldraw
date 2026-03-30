@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import { TLComponents, Tldraw, approximately, useEditor, useIsDarkMode, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 /**
  * There's a guide at the bottom of this file!

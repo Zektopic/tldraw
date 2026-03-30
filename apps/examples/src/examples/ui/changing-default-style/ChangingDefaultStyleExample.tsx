@@ -1,5 +1,5 @@
 import { DefaultSizeStyle, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 DefaultSizeStyle.setDefaultValue('s')
 

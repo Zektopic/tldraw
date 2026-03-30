@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { ImageAnnotationEditor } from './ImageAnnotationEditor'
 import { ImageExport } from './ImageExport'
 import { ImagePicker } from './ImagePicker'

@@ -1,5 +1,5 @@
 import { TLComponents, Tldraw, useEditor, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './reactive-inputs.css'
 
 // There's a guide at the bottom of this file!

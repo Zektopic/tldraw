@@ -1,5 +1,5 @@
 import { Tldraw, TLUiActionItem, TLUiActionsContextType } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function BasicExample() {
 	return (

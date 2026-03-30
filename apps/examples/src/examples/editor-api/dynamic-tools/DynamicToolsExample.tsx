@@ -15,7 +15,7 @@ import {
 	useIsToolSelected,
 	useTools,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './dynamic-tools.css'
 
 // There's a guide at the bottom of this file!

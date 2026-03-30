@@ -10,7 +10,7 @@ import {
 	Tldraw,
 	TLShape,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const MY_CUSTOM_SHAPE_TO_SVG_TYPE = 'my-custom-shape-to-svg'
 

@@ -10,7 +10,7 @@ import {
 	UserRecordType,
 	useTldrawCurrentUser,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function SyncCustomUserExample({ roomId }: { roomId: string }) {
 	// [1]

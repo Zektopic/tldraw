@@ -1,5 +1,5 @@
 import { getErrorAnnotations, Tldraw, TLEditorComponents, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './custom-error-capture.css'
 
 // There's a guide at the bottom of this file!

@@ -1,5 +1,5 @@
 import { TLUiComponents, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // The type here is include only to ensure this example contains all possible ui components,
 const components: Required<TLUiComponents> = {

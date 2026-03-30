@@ -9,7 +9,7 @@ import {
 	useQuickReactor,
 	useValue,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './drag-and-drop-tray.css'
 import { TRAY_ITEMS, TrayItem } from './trayitems'
 

@@ -7,7 +7,7 @@ import {
 	useEditor,
 	useValue,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './shape-animation.css'
 
 // [1]

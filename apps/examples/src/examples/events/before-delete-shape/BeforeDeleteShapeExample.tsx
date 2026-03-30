@@ -1,5 +1,5 @@
 import { Editor, Tldraw, createShapeId, toRichText } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function BeforeDeleteShapeExample() {
 	return (

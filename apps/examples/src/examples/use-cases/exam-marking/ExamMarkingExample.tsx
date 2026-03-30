@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './pdf-editor/pdf-editor.css'
 import { PdfEditor } from './pdf-editor/PdfEditor'
 import { Pdf, PdfPicker } from './pdf-editor/PdfPicker'

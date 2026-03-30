@@ -13,7 +13,7 @@ import {
 	UserRecordType,
 	useValue,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './attribution.css'
 
 // There's a guide at the bottom of this file!

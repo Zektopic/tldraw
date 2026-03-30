@@ -1,5 +1,5 @@
 import { Tldraw, TldrawOptions } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const options: Partial<TldrawOptions> = {
 	maxPages: 3,

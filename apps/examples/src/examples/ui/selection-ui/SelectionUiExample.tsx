@@ -1,5 +1,5 @@
 import { TLComponents, Tldraw, Vec, intersectLineSegmentPolygon, useEditor, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 const components: TLComponents = {
 	InFrontOfTheCanvas: () => {

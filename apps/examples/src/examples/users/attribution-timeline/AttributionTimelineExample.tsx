@@ -16,7 +16,7 @@ import {
 	useEditor,
 	UserRecordType,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './attribution-timeline.css'
 
 // There's a guide at the bottom of this file!

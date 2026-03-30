@@ -6,7 +6,7 @@ import {
 	createShapeId,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // [1]
 const GEO_TYPES = [

@@ -1,5 +1,5 @@
 import { createShapeId, Tldraw, TldrawUiButton, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './z-order.css'
 
 const COLORS = ['red', 'blue', 'green', 'orange'] as const

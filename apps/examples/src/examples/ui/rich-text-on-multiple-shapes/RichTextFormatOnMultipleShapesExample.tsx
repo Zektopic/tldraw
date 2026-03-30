@@ -13,7 +13,7 @@ import {
 	useEditor,
 	useValue,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 type ShapeWithRichText = ExtractShapeByProps<{ richText: TLRichText }>
 

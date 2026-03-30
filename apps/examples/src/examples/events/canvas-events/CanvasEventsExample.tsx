@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { TLEventInfo, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 // There's a guide at the bottom of this file!
 type TimedEvent = TLEventInfo & { lastUpdated: number }

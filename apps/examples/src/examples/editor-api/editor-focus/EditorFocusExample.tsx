@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { Editor, Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './editor-focus.css'
 
 export default function EditorFocusExample() {

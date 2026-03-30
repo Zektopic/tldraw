@@ -1,5 +1,5 @@
 import { Editor, TLComponents, Tldraw, useEditor } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { MAP_HEIGHT, MAP_WIDTH } from './us-map-data'
 import { UsMapShapeUtil } from './UsMapShapeUtil'
 import './d3-map.css'

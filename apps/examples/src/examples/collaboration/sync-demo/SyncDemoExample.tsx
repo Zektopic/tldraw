@@ -1,6 +1,6 @@
 import { useSyncDemo } from '@tldraw/sync'
 import { Tldraw } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 
 export default function SyncDemoExample({ roomId }: { roomId: string }) {
 	const store = useSyncDemo({ roomId })

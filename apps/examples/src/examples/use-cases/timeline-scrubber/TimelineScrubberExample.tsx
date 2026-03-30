@@ -8,7 +8,7 @@ import {
 	track,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './timeline-scrubber.css'
 
 interface TimelineEntry {

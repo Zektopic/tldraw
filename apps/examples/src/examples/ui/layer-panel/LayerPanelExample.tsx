@@ -1,5 +1,5 @@
 import { TLComponents, TLEditorSnapshot, Tldraw, useEditor, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { ShapeList } from './ShapeList'
 import './layer-panel.css'
 import snapshot from './snapshot.json'

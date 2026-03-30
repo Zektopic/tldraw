@@ -6,7 +6,7 @@
  */
 import { useCallback, useState } from 'react'
 import { TLComponents, Tldraw, TldrawUiButton, useEditor, useValue } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import { FlowchartShapeUtil } from './customMermaidShapeUtil'
 import './custom-shape-mermaid.css'
 import { getFlowchartSourceError } from './flowchartSourceGuard'

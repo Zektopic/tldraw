@@ -6,7 +6,7 @@ import {
 	useEditor,
 	useTranslation,
 } from 'tldraw'
-import 'tldraw/tldraw.css'
+import 'tldraw/ui.css'
 import './custom-language-translations.css'
 
 // There's a guide at the bottom of this file!
