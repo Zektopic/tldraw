@@ -33,7 +33,9 @@ jobs:
         run: yarn install --immutable
 
       - name: Build examples app
-        run: yarn workspace examples.tldraw.com build
+        run: |
+          export NODE_OPTIONS=--max-old-space-size=4096
+          yarn workspace examples.tldraw.com build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
