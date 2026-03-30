@@ -8,7 +8,7 @@ import {
 	TLShape,
 	Tldraw,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const MY_GRID_SHAPE_TYPE = 'my-grid-shape'
 const MY_COUNTER_SHAPE_TYPE = 'my-counter-shape'

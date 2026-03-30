@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { SpeechBubbleTool } from './SpeechBubble/SpeechBubbleTool'
 import { SpeechBubbleUtil } from './SpeechBubble/SpeechBubbleUtil'
 import { components, customAssetUrls, uiOverrides } from './SpeechBubble/ui-overrides'

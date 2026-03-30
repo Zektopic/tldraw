@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Editor, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 export default function Embedded() {
 	const rEditor = useRef<Editor | null>(null)

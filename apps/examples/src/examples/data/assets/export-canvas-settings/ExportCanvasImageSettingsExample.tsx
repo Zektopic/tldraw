@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Box, Tldraw, TLImageExportOptions, TLUiComponents, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const components: TLUiComponents = {
 	SharePanel: ExportCanvasButton,

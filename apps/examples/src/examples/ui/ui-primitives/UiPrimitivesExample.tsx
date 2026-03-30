@@ -30,7 +30,7 @@ import {
 	TLEditorComponents,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './ui-primitives.css'
 
 // [1]

@@ -1,5 +1,5 @@
 import { Tldraw, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 function DarkModeButton() {
 	const editor = useEditor()

@@ -1,5 +1,5 @@
 import { HTMLContainer, RecordProps, Rectangle2d, ShapeUtil, T, TLShape, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 declare module 'tldraw' {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Editor, TLFrameShape, Tldraw, createShapeId, transact, useEditor, useValue } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { SLIDE_MARGIN, SLIDE_SIZE, SlidesProvider, useSlides } from './SlidesManager'
 
 export default function SlideShowExample() {

@@ -1,5 +1,5 @@
 import { StateNode, TLPointerEventInfo, Tldraw, createShapeId } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 class QuickShapeTool extends StateNode {

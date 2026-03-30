@@ -19,7 +19,7 @@ import {
 	createBindingId,
 	getIndexBetween,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import snapShot from './snapshot.json'
 
 const CONTAINER_TYPE = 'container'

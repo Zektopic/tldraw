@@ -11,7 +11,7 @@ import {
 	UserRecordType,
 	useValue,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './custom-user.css'
 
 // There's a guide at the bottom of this file!

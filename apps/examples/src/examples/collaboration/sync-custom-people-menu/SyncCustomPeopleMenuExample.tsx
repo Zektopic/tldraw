@@ -1,6 +1,6 @@
 import { useSyncDemo } from '@tldraw/sync'
 import { Tldraw, useEditor, useValue } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './sync-custom-people-menu.css'
 
 // [1]

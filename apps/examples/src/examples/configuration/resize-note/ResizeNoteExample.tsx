@@ -1,5 +1,5 @@
 import { NoteShapeUtil, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // Configure the note shape util to allow scaling to resize
 const shapeUtils = [NoteShapeUtil.configure({ resizeMode: 'scale' })]

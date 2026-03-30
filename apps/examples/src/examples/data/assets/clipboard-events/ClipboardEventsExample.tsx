@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { Tldraw, type TldrawOptions } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './clipboard-events.css'
 
 // [1]

@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { createShapeId, Tldraw, TldrawUiButton, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './align-and-distribute-shapes.css'
 
 // [1]

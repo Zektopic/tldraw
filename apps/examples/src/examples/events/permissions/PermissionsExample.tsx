@@ -1,5 +1,5 @@
 import { Box, Editor, SVGContainer, TLGeoShape, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 const CONTAINER_BOUNDS = new Box(100, 100, 400, 300)

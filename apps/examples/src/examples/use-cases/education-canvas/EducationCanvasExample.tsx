@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Box, Editor, TLCameraOptions, TLComponents, Tldraw, track, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './education-canvas.css'
 
 // Fixed camera options to prevent zooming/panning

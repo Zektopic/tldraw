@@ -66,7 +66,7 @@ This file **must** include a React component as its default export that looks so
 
 ```tsx
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 export default function ExampleExample() {
 	return (
@@ -87,7 +87,7 @@ If the example requires other CSS, include that CSS in a file in the same folder
 
 ```tsx
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './example.css'
 ```
 
@@ -99,7 +99,7 @@ For examples that need buttons or controls, use the `TopPanel` component slot wi
 
 ```tsx
 import { Tldraw, TldrawUiButton, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './my-example.css'
 
 function MyControls() {
@@ -143,7 +143,7 @@ While you should attempt to create small examples that do not require splitting 
 
 ```tsx
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { Input } from './Input.tsx'
 ```
 
@@ -155,7 +155,7 @@ Comments should be written using a "footnote" format. Inside of the code, write 
 
 ```tsx
 import { Tldraw, type TLComponents } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 const components: TLComponents = {

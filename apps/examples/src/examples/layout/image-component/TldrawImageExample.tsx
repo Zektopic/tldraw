@@ -10,7 +10,7 @@ import {
 	TldrawImage,
 	getSnapshot,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import initialSnapshot from './snapshot.json'
 
 // There's a guide at the bottom of this file!

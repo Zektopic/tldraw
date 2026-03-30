@@ -1,5 +1,5 @@
 import { FrameShapeUtil, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const ConfiguredFrameShapeUtil = FrameShapeUtil.configure({ showColors: true })
 

@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // You can set the `maxPages` option to 1 to disable UI related to managing multiple pages.
 

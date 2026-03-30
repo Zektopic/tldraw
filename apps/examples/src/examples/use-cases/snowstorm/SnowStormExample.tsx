@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { SnowStorm } from './SnowStorm'
 import './snowstorm.css'
 

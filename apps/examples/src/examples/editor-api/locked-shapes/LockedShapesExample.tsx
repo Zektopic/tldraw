@@ -1,5 +1,5 @@
 import { createShapeId, Tldraw, TldrawUiButton, TLShapeId, toRichText, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 const TEMPLATE_IDS: TLShapeId[] = [

@@ -11,7 +11,7 @@ import {
 	TLShape,
 	useDefaultColorTheme,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const MY_SHAPE_WITH_TLDRAW_STYLES_TYPE = 'myshapewithtldrawstyles' as const
 

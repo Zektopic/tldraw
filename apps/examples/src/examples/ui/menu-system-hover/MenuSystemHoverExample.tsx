@@ -9,7 +9,7 @@ import {
 	useEditor,
 	useMenuIsOpen,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './menu-system-hover.css'
 
 // [1]

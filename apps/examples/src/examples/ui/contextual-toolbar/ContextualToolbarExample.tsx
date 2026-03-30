@@ -10,7 +10,7 @@ import {
 	track,
 	useEditor,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import _jsonSnapshot from './snapshot.json'
 
 // There's a guide at the bottom of this file!

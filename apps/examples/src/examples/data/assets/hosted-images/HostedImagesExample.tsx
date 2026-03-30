@@ -1,5 +1,5 @@
 import { TLAssetStore, Tldraw, uniqueId } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // [1]
 const UPLOAD_URL = '/SOME_ENDPOINT'

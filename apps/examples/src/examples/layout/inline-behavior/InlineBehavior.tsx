@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import { Editor, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // There's a guide at the bottom of this page!
 

@@ -9,7 +9,7 @@ import {
 	useEditor,
 	useLocalStorageState,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const CAMERA_OPTIONS: TLCameraOptions = {
 	isLocked: false,

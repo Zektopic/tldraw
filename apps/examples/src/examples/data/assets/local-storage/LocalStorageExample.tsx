@@ -1,7 +1,7 @@
 import { throttle } from 'lodash'
 import { useLayoutEffect, useMemo, useState } from 'react'
 import { DefaultSpinner, Tldraw, createTLStore, getSnapshot, loadSnapshot } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // There's a guide at the bottom of this file!
 

@@ -13,7 +13,7 @@ import {
 	useIsToolSelected,
 	useTools,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { SlideShapeTool } from './SlideShapeTool'
 import { SlideShapeUtil } from './SlideShapeUtil'
 import { SlidesPanel } from './SlidesPanel'

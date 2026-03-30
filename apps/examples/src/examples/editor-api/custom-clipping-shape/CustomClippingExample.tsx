@@ -14,7 +14,7 @@ import {
 	useTools,
 	useValue,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { CircleClipShapeTool } from './CircleClipShapeTool'
 import { CircleClipShapeUtil, isClippingEnabled$ } from './CircleClipShapeUtil'
 import './CustomClipping.css'

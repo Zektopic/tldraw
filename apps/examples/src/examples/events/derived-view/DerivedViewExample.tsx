@@ -1,7 +1,7 @@
 import { isUninitialized, RESET_VALUE } from '@tldraw/state'
 import { useMemo, useRef } from 'react'
 import { computed, Editor, isShape, Tldraw, TLShapeId, useEditor, useValue } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 export default function DerivedViewExample() {
 	return (

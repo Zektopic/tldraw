@@ -1,5 +1,5 @@
 import { Editor, Tldraw, createShapeId, toRichText } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 export default function AfterDeleteShapeExample() {
 	return (

@@ -1,5 +1,5 @@
 import { TLComponents, Tldraw, useEditor, useEditorComponents, useValue } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const components: TLComponents = {
 	OnTheCanvas: () => {

@@ -11,7 +11,7 @@ import {
 	useIsToolSelected,
 	useTools,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { StickerTool } from './sticker-tool-util'
 
 // There's a guide at the bottom of this file!

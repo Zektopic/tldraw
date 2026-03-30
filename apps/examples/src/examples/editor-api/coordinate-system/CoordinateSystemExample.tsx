@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Tldraw, TLEditorComponents, track, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './coordinate-system.css'
 
 // [1]

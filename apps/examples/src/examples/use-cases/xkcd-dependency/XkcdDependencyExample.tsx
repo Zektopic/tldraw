@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier2d-compat'
 import { useEffect, useRef } from 'react'
 import { createShapeId, Tldraw, TLShapeId, toRichText, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // Block positions from the xkcd "Dependency" comic (#2347)
 // Each group of 4 values is [x, y, width, height]

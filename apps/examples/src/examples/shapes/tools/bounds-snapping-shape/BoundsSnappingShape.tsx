@@ -1,5 +1,5 @@
 import { Editor, TLStoreSnapshot, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { PlayingCardTool } from './PlayingCardShape/playing-card-tool'
 import { PlayingCardUtil } from './PlayingCardShape/playing-card-util'
 import snapshot from './snapshot.json'

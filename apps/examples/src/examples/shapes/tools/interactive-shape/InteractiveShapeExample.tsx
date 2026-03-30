@@ -1,5 +1,5 @@
 import { Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { myInteractiveShape } from './my-interactive-shape-util'
 
 // There's a guide at the bottom of this file!

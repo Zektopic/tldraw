@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Tldraw, TLEditorComponents, track, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // There's a guide at the bottom of this file!
 

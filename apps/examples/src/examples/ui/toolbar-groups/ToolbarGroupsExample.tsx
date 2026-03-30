@@ -25,7 +25,7 @@ import {
 	TldrawUiMenuItem,
 	TriangleToolbarItem,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 export default function BasicExample() {
 	const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal')

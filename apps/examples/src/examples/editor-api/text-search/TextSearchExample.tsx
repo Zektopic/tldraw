@@ -1,5 +1,5 @@
 import { TLComponents, TLUiOverrides, Tldraw, atom, track } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { TextSearchPanel } from './TextSearchPanel'
 import './text-search.css'
 

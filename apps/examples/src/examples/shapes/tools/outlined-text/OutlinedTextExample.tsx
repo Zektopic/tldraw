@@ -9,7 +9,7 @@ import {
 	useEditor,
 	useValue,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import './OutlinedTextExample.css'
 
 interface OutlineExtensionOptions {

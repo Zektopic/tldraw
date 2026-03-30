@@ -15,7 +15,7 @@ import {
 	getIndicesAbove,
 	vecModelValidator,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const Y_SHAPE_TYPE = 'y-shape'
 

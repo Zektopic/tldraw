@@ -23,7 +23,7 @@ import {
 	useIsToolSelected,
 	useTools,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const STICKER_TYPE = 'sticker'
 

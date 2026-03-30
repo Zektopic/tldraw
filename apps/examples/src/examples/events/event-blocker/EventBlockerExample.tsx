@@ -1,5 +1,5 @@
 import { TLComponents, Tldraw } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 function WelcomeScreen() {
 	return (

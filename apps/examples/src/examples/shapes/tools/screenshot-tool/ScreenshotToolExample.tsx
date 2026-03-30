@@ -12,7 +12,7 @@ import {
 	useTools,
 	useValue,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { ScreenshotDragging } from './ScreenshotTool/childStates/Dragging'
 import { ScreenshotTool } from './ScreenshotTool/ScreenshotTool'
 

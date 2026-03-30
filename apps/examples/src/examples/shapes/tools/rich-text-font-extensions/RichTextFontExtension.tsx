@@ -15,7 +15,7 @@ import {
 	useEditor,
 	useValue,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 import { extensionFontFamilies } from './fonts'
 import './RichTextFontExtension.css'
 import { FontSize } from './FontSizeExtension'

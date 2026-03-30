@@ -7,7 +7,7 @@ import {
 	Tldraw,
 	TLShape,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 const DANGEROUS_HTML_TYPE = 'dangerous-html'
 

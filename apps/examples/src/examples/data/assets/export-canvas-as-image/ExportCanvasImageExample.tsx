@@ -1,5 +1,5 @@
 import { Tldraw, TLUiComponents, useEditor } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 function ExportCanvasButton() {
 	const editor = useEditor()

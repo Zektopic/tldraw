@@ -11,7 +11,7 @@ import {
 	useDialogs,
 	useToasts,
 } from 'tldraw'
-import 'tldraw/ui.css'
+import 'tldraw/tldraw.css'
 
 // There's a guide at the bottom of this file
 
