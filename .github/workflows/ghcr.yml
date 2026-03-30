@@ -35,7 +35,7 @@ jobs:
       - name: Build examples app
         run: |
           export NODE_OPTIONS=--max-old-space-size=4096
-          yarn workspace examples.tldraw.com build
+          yarn workspace examples.tldraw.com build --emptyOutDir
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
