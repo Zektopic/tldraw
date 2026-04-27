@@ -15,18 +15,18 @@ import {
 	useShallowArrayIdentity,
 	useShallowObjectIdentity,
 } from '@tldraw/editor'
+import { TLAnyAssetUtilConstructor } from '@tldraw/editor'
 import { useMemo } from 'react'
-import { TldrawHandles } from './canvas/TldrawHandles'
-import { TldrawOverlays } from './canvas/TldrawOverlays'
-import { TldrawScribble } from './canvas/TldrawScribble'
-import { TldrawSelectionForeground } from './canvas/TldrawSelectionForeground'
-import { TldrawShapeIndicators } from './canvas/TldrawShapeIndicators'
+import { ImageAssetUtil } from './assets/ImageAssetUtil'
+import { VideoAssetUtil } from './assets/VideoAssetUtil'
+import { defaultAssetUtils } from './defaultAssetUtils'
 import { defaultBindingUtils } from './defaultBindingUtils'
 import { TLEmbedDefinition } from './defaultEmbedDefinitions'
 import {
 	TLExternalContentProps,
 	registerDefaultExternalContentHandlers,
 } from './defaultExternalContentHandlers'
+import { defaultOverlayUtils } from './defaultOverlayUtils'
 import { defaultShapeTools } from './defaultShapeTools'
 import { defaultShapeUtils } from './defaultShapeUtils'
 import { registerDefaultSideEffects } from './defaultSideEffects'
@@ -104,6 +104,34 @@ export type TldrawProps = TldrawBaseProps & TldrawEditorStoreProps
 
 const allDefaultTools = [...defaultTools, ...defaultShapeTools]
 
+function configureDefaultAssetUtils(
+	assetUtils: readonly TLAnyAssetUtilConstructor[],
+	overrides: Pick<
+		TLExternalContentProps,
+		'maxImageDimension' | 'acceptedImageMimeTypes' | 'acceptedVideoMimeTypes'
+	>
+): readonly TLAnyAssetUtilConstructor[] {
+	const { maxImageDimension, acceptedImageMimeTypes, acceptedVideoMimeTypes } = overrides
+	const needsImageConfig = maxImageDimension !== undefined || acceptedImageMimeTypes !== undefined
+	const needsVideoConfig = acceptedVideoMimeTypes !== undefined
+	if (!needsImageConfig && !needsVideoConfig) return assetUtils
+
+	return assetUtils.map((util) => {
+		if (needsImageConfig && util.type === 'image') {
+			return (util as typeof ImageAssetUtil).configure({
+				...(maxImageDimension !== undefined && { maxDimension: maxImageDimension }),
+				...(acceptedImageMimeTypes !== undefined && { supportedMimeTypes: acceptedImageMimeTypes }),
+			})
+		}
+		if (needsVideoConfig && util.type === 'video') {
+			return (util as typeof VideoAssetUtil).configure({
+				...(acceptedVideoMimeTypes !== undefined && { supportedMimeTypes: acceptedVideoMimeTypes }),
+			})
+		}
+		return util
+	})
+}
+
 /** @public @react */
 export function Tldraw(props: TldrawProps) {
 	const {
@@ -116,6 +144,8 @@ export function Tldraw(props: TldrawProps) {
 		components = {},
 		shapeUtils = [],
 		bindingUtils = [],
+		assetUtils = [],
+		overlayUtils = [],
 		tools = [],
 		// needs to be here for backwards compatibility
 		// eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -143,12 +173,6 @@ export function Tldraw(props: TldrawProps) {
 	}, [rest.hideUi, CustomInFrontOfTheCanvas])
 	const componentsWithDefault = useMemo(
 		() => ({
-			Scribble: TldrawScribble,
-			ShapeIndicators: TldrawShapeIndicators,
-			CollaboratorScribble: TldrawScribble,
-			SelectionForeground: TldrawSelectionForeground,
-			Handles: TldrawHandles,
-			Overlays: TldrawOverlays,
 			Spinner,
 			LoadingScreen,
 			..._components,
@@ -167,6 +191,22 @@ export function Tldraw(props: TldrawProps) {
 	const bindingUtilsWithDefaults = useMemo(
 		() => mergeArraysAndReplaceDefaults('type', _bindingUtils, defaultBindingUtils),
 		[_bindingUtils]
+	)
+
+	const _assetUtils = useShallowArrayIdentity(assetUtils)
+	const assetUtilsWithDefaults = useMemo(
+		() =>
+			configureDefaultAssetUtils(
+				mergeArraysAndReplaceDefaults('type', _assetUtils, defaultAssetUtils),
+				{ maxImageDimension, acceptedImageMimeTypes, acceptedVideoMimeTypes }
+			),
+		[_assetUtils, maxImageDimension, acceptedImageMimeTypes, acceptedVideoMimeTypes]
+	)
+
+	const _overlayUtils = useShallowArrayIdentity(overlayUtils)
+	const overlayUtilsWithDefaults = useMemo(
+		() => mergeArraysAndReplaceDefaults('type', _overlayUtils, defaultOverlayUtils),
+		[_overlayUtils]
 	)
 
 	const _tools = useShallowArrayIdentity(tools)
@@ -232,6 +272,8 @@ export function Tldraw(props: TldrawProps) {
 					components={componentsWithDefault}
 					shapeUtils={shapeUtilsWithDefaults}
 					bindingUtils={bindingUtilsWithDefaults}
+					assetUtils={assetUtilsWithDefaults}
+					overlayUtils={overlayUtilsWithDefaults}
 					tools={toolsWithDefaults}
 					options={optionsWithDefaults}
 					assetUrls={assets}
@@ -277,6 +319,17 @@ function InsideOfEditorAndUiContext({
 		// won't be directly used, but mean that when adding text the user can switch between fonts
 		// quickly, without having to wait for them to load in.
 		editor.fonts.requestFonts(allDefaultFontFaces)
+
+		// Also preload any custom font faces defined in themes
+		const themes = editor.getThemes()
+		for (const theme of Object.values(themes)) {
+			for (const key of Object.keys(theme.fonts)) {
+				const font = theme.fonts[key as keyof typeof theme.fonts]
+				if (font.faces?.length) {
+					editor.fonts.requestFonts(font.faces)
+				}
+			}
+		}
 
 		editor.once('edit', () => trackEvent('edit', { source: 'unknown' }))
 

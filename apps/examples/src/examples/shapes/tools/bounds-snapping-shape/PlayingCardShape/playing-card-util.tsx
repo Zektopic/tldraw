@@ -36,7 +36,7 @@ export class PlayingCardUtil extends BaseBoxShapeUtil<IPlayingCard> {
 	}
 
 	// [4]
-	override isAspectRatioLocked(_shape: IPlayingCard) {
+	override isAspectRatioLocked(shape: IPlayingCard) {
 		return true
 	}
 
@@ -100,8 +100,10 @@ export class PlayingCardUtil extends BaseBoxShapeUtil<IPlayingCard> {
 	}
 
 	// [8]
-	indicator(shape: IPlayingCard) {
-		return <rect width={shape.props.w} height={shape.props.h} />
+	getIndicatorPath(shape: IPlayingCard) {
+		const path = new Path2D()
+		path.rect(0, 0, shape.props.w, shape.props.h)
+		return path
 	}
 }
 

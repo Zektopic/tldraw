@@ -33,7 +33,7 @@ class HouseShapeUtil extends ShapeUtil<HouseShape> {
 	static override type = HOUSE_TYPE
 	static override props = houseShapeProps
 
-	override canResize() {
+	override canResize(shape: HouseShape) {
 		return true
 	}
 	override getDefaultProps() {
@@ -73,11 +73,11 @@ class HouseShapeUtil extends ShapeUtil<HouseShape> {
 		)
 	}
 	// [3]
-	override indicator(shape: HouseShape) {
+	override getIndicatorPath(shape: HouseShape) {
 		const { house: houseVertices, door: doorVertices } = getHouseVertices(shape)
 		const housePathData = 'M' + houseVertices[0] + 'L' + houseVertices.slice(1) + 'Z'
 		const doorPathData = 'M' + doorVertices[0] + 'L' + doorVertices.slice(1) + 'Z'
-		return <path d={housePathData + doorPathData} />
+		return new Path2D(housePathData + doorPathData)
 	}
 	override onResize(shape: HouseShape, info: TLResizeInfo<HouseShape>) {
 		const resized = resizeBox(shape, info)
