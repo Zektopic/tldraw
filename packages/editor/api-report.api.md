@@ -1349,6 +1349,8 @@ export class Editor extends EventEmitter<TLEventMap> {
     _getReferencedUserIds(shapes: TLShape[]): Set<string>;
     getRenderingShapes(): TLRenderingShape[];
     getResizeScaleFactor(): number;
+    // @internal
+    getResizeShapePartial(shape: TLShape | TLShapeId, scale: VecLike, opts?: TLResizeShapeOptions): null | TLShapePartial;
     getRichTextEditor(): null | TiptapEditor;
     getSelectedShapeAtPoint(point: VecLike): TLShape | undefined;
     getSelectedShapeIds(): TLShapeId[];
@@ -1458,6 +1460,8 @@ export class Editor extends EventEmitter<TLEventMap> {
         hitInside?: boolean | undefined;
         margin?: number | undefined;
     }): boolean;
+    // @internal
+    isReplayingHistory(): boolean;
     isShapeFrameLike(shape: TLShape | TLShapeId): boolean;
     // (undocumented)
     isShapeHidden(shapeOrId: TLShape | TLShapeId): boolean;
@@ -2157,6 +2161,8 @@ export class HistoryManager<R extends UnknownRecord> {
     // @internal (undocumented)
     _isInBatch: boolean;
     // @internal (undocumented)
+    isReplaying(): boolean;
+    // @internal (undocumented)
     _mark(id: string): void;
     // (undocumented)
     redo(): this;
@@ -2196,6 +2202,8 @@ export class InputsManager {
     get currentPagePoint(): Vec;
     // @deprecated (undocumented)
     get currentScreenPoint(): Vec;
+    // @internal (undocumented)
+    dispose(): void;
     getAccelKey(): boolean;
     getAltKey(): boolean;
     getCtrlKey(): boolean;
@@ -3954,6 +3962,7 @@ export const tlenv: {
     isFirefox: boolean;
     isIos: boolean;
     isSafari: boolean;
+    isTouchDevice: boolean;
     isWebview: boolean;
 };
 
@@ -4462,6 +4471,7 @@ export type TLPointerEvent = (info: TLPointerEventInfo) => void;
 
 // @public (undocumented)
 export type TLPointerEventInfo = TLBaseEventInfo & {
+    isPenDirect?: boolean;
     button: number;
     isPen: boolean;
     name: TLPointerEventName;
