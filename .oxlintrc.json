@@ -30,7 +30,7 @@
 		"**/dist-cjs/*",
 		"**/dist-esm/*",
 		"**/.tsbuild*",
-		"**/.lazy/*",
+		"**/.turbo/*",
 		"**/.next/*",
 		"**/.wrangler/*",
 		"**/.vercel/*",
@@ -42,7 +42,6 @@
 		"**/api/*",
 		"!**/pages/api/*",
 		"**/*.json",
-		"**/lazy.config.ts",
 		"**/next.config.js",
 		"**/setupTests.js",
 		"apps/vscode/extension/editor",
@@ -65,7 +64,6 @@
 		"**/.*.js",
 		"packages/assets/*",
 		"packages/create-tldraw/cli.cjs",
-		"yarn.config.cjs",
 		"**/*/vitest.config.ts",
 		"**/*/setupVitest.js",
 		"**/*/zod-locales-shim.js",
@@ -271,6 +269,12 @@
 			}
 		},
 		{
+			"files": ["packages/**/*", "apps/**/*", "internal/**/*", "templates/**/*"],
+			"rules": {
+				"tldraw/no-undeclared-dependencies": "error"
+			}
+		},
+		{
 			"files": ["packages/editor/**/*", "packages/tldraw/**/*", "packages/utils/**/*"],
 			"rules": {
 				"no-restricted-globals": [
@@ -405,6 +409,11 @@
 			"rules": {
 				"tldraw/no-export-star": "off"
 			}
+		},
+		{
+			"files": ["internal/scripts/process-compose-bin.cjs"],
+			"env": { "node": true },
+			"globals": { "fetch": "readonly" }
 		},
 		{
 			"files": ["apps/mcp-app/**/*"],

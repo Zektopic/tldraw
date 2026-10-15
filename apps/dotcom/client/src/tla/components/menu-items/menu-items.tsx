@@ -32,6 +32,10 @@ import {
 	setColorThemePreview,
 	updateLocalSessionState,
 } from '../../utils/local-session-state'
+import {
+	TLDRAW_OFFLINE_FILE_EXTENSION,
+	useRejectTldrawOfflineFiles,
+} from '../../utils/tldrawOfflineFiles'
 import { SubmitFeedbackDialog } from '../dialogs/SubmitFeedbackDialog'
 import { TlaManageCookiesDialog } from '../dialogs/TlaManageCookiesDialog'
 
@@ -62,6 +66,7 @@ const messages = defineMessages({
 
 export function SignOutMenuItem() {
 	const auth = useAuth()
+	const app = useMaybeApp()
 
 	const trackEvent = useTldrawAppUiEvents()
 
@@ -69,9 +74,17 @@ export function SignOutMenuItem() {
 
 	const handleSignout = useCallback(() => {
 		signoutAnalytics()
-		auth.signOut().then(resetLocalSessionStateButKeepTheme)
+		auth
+			.signOut()
+			.then(async () => {
+				resetLocalSessionStateButKeepTheme()
+				// After sign-out rather than before: an IndexedDB delete waits for every connection to
+				// the database to close, and other tabs only drop theirs once Clerk propagates sign-out.
+				await app?.deleteLocalData()
+			})
+			.catch((err) => console.error('Sign out failed:', err))
 		trackEvent('sign-out-clicked', { source: 'sidebar' })
-	}, [auth, trackEvent])
+	}, [auth, app, trackEvent])
 
 	if (!auth.isSignedIn) return
 	return (
@@ -171,64 +184,34 @@ function UIThemeMenuCheckboxItem({
 	)
 }
 
-export function UIThemeSubmenu() {
+function useUIThemeIds() {
 	const editor = useMaybeEditor()
-	const colorTheme = useValue('colorTheme', () => getLocalSessionState().colorTheme, [])
-	const trackEvent = useTldrawAppUiEvents()
-	const clearThemePreview = useCallback(() => setColorThemePreview(null), [])
+	return useValue('themeIds', () => (editor ? Object.keys(editor.getThemes()) : []), [editor])
+}
+
+export function UIThemeSubmenu() {
+	const themeIds = useUIThemeIds()
 	const colorThemeLabel = useMsg(messages.colorTheme)
-	const defaultThemeLabel = useMsg(messages.colorThemeDefault)
 
-	const themeIds = useValue('themeIds', () => (editor ? Object.keys(editor.getThemes()) : []), [
-		editor,
-	])
-
-	useEffect(() => clearThemePreview, [clearThemePreview])
-
-	if (!editor || themeIds.length === 0) return null
+	if (themeIds.length === 0) return null
 
 	return (
 		<TldrawUiMenuSubmenu id="ui-theme" label={colorThemeLabel}>
-			<div
-				className="tlui-menu__group"
-				onPointerCancel={clearThemePreview}
-				onPointerLeave={clearThemePreview}
-			>
-				{themeIds.map((id) => (
-					<UIThemeMenuCheckboxItem
-						key={id}
-						label={id === 'default' ? defaultThemeLabel : (THEME_NAMES[id] ?? id)}
-						checked={colorTheme === id}
-						onPreview={() => setColorThemePreview(id)}
-						onSelect={() => {
-							updateLocalSessionState(() => ({ colorTheme: id }))
-							clearThemePreview()
-							trackEvent('set-color-theme', {
-								source: 'user-preferences',
-								theme: id,
-							})
-						}}
-					/>
-				))}
-			</div>
+			<UIThemeMenuGroup />
 		</TldrawUiMenuSubmenu>
 	)
 }
 
 function UIThemeMenuGroup() {
-	const editor = useMaybeEditor()
 	const colorTheme = useValue('colorTheme', () => getLocalSessionState().colorTheme, [])
 	const trackEvent = useTldrawAppUiEvents()
 	const clearThemePreview = useCallback(() => setColorThemePreview(null), [])
 	const defaultThemeLabel = useMsg(messages.colorThemeDefault)
-
-	const themeIds = useValue('themeIds', () => (editor ? Object.keys(editor.getThemes()) : []), [
-		editor,
-	])
+	const themeIds = useUIThemeIds()
 
 	useEffect(() => clearThemePreview, [clearThemePreview])
 
-	if (!editor || themeIds.length === 0) return null
+	if (themeIds.length === 0) return null
 
 	return (
 		<div
@@ -335,10 +318,11 @@ export function ImportFileActionItem() {
 	const navigate = useNavigate()
 
 	const importFileMsg = useMsg(messages.importFile)
+	const rejectTldrawOfflineFiles = useRejectTldrawOfflineFiles()
 
 	return (
 		<TldrawUiMenuItem
-			id="about"
+			id="import-file"
 			label={importFileMsg}
 			readonlyOk
 			onSelect={async () => {
@@ -346,17 +330,25 @@ export function ImportFileActionItem() {
 				if (!editor) return
 				if (!app) return
 
-				trackEvent('import-tldr-file', { source: 'account-menu' })
+				trackEvent('import-tldr-file', { source: 'file-menu' })
 
 				try {
-					const tldrawFiles = await fileOpen({
-						extensions: [TLDRAW_FILE_EXTENSION],
+					// tldraw offline files are selectable so that we can explain why we can't open them
+					// yet. Leaving them out of the picker would just grey them out with no explanation.
+					const pickedFiles = await fileOpen({
+						extensions: [TLDRAW_FILE_EXTENSION, TLDRAW_OFFLINE_FILE_EXTENSION],
 						multiple: true,
 						description: 'tldraw project',
 					})
 
-					app.uploadTldrFiles(tldrawFiles, (fileId) => {
-						navigate(routes.tlaFile(fileId), { state: { mode: 'create' } })
+					const tldrawFiles = rejectTldrawOfflineFiles(pickedFiles)
+					if (!tldrawFiles.length) return
+
+					app.uploadTldrFiles(tldrawFiles, {
+						source: 'file-menu',
+						onFirstFileUploaded: (fileId) => {
+							navigate(routes.tlaFile(fileId), { state: { mode: 'create' } })
+						},
 					})
 				} catch {
 					// user cancelled

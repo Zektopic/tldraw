@@ -17,15 +17,21 @@
 			"shortDescription": "Visual node-based builder for image pipelines.",
 			"order": 6
 		},
+		"deploy": {
+			"target": "cloudflare",
+			"host": "image-pipeline.templates.tldraw.dev"
+		},
 		"scripts": {
-			"lint": null
+			"lint": null,
+			"build-types": null
 		}
 	},
 	"scripts": {
 		"dev": "vite --host",
 		"build": "tsc && vite build",
-		"lint": "yarn run -T tsx ../../internal/scripts/lint.ts",
-		"preview": "vite preview"
+		"lint": "pnpm exec tsx ../../internal/scripts/lint.ts",
+		"preview": "vite preview",
+		"build-types": "tsc"
 	},
 	"dependencies": {
 		"classnames": "^2.5.1",

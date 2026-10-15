@@ -16,29 +16,14 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Enable corepack
-        run: |
-          corepack enable
-          corepack prepare yarn@4.12.0 --activate
-          yarn --version
-
-      - name: Install deps
-        run: yarn install --immutable
-
-      - name: Prepare CSS assets
-        run: yarn workspace tldraw prebuild
+      - uses: ./.github/actions/setup
 
       - name: Build examples app
         run: |
           export NODE_OPTIONS=--max-old-space-size=4096
-          yarn workspace examples.tldraw.com build --emptyOutDir
+          pnpm turbo run build --filter='./apps/examples'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

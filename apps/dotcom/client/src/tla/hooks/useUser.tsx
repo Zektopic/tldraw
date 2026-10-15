@@ -2,7 +2,6 @@ import { useAuth, useUser as useClerkUser } from '@clerk/clerk-react'
 import type { UserResource } from '@clerk/types'
 import { ReactNode, createContext, useContext, useMemo } from 'react'
 import { assert, useShallowObjectIdentity } from 'tldraw'
-import { useMaybeApp } from './useAppState'
 
 interface TldrawUser {
 	id: string
@@ -11,6 +10,13 @@ interface TldrawUser {
 	getToken(): Promise<string>
 }
 const UserContext = createContext<null | TldrawUser>(null)
+
+export function getIsTldrawStaff(clerkUser: UserResource | null | undefined) {
+	return (
+		clerkUser?.primaryEmailAddress?.verification?.status === 'verified' &&
+		clerkUser.primaryEmailAddress.emailAddress.endsWith('@tldraw.com')
+	)
+}
 
 export function UserProvider({ children }: { children: ReactNode }) {
 	const { isLoaded, ...others } = useClerkUser()
@@ -21,30 +27,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
 	// Destructuring the bits we need here fixes the issue as they seem to be stable.
 	const { getToken, isSignedIn, isLoaded: isAuthLoaded } = useAuth()
 
-	// app can be null during hot reloading sometimes?
-	const app = useMaybeApp()
-
+	// Built from Clerk alone so the sync socket can carry the access token before Zero has
+	// resolved. The Clerk id is also the app's userId and the Zero user row id.
 	const value = useMemo(() => {
-		if (!user || !isSignedIn || !app) return null
-
-		const storeUser = app.getUser()
-		if (!storeUser) throw new Error('User not found in app store')
+		if (!user || !isSignedIn) return null
 
 		return {
-			id: storeUser.id,
+			id: user.id,
 			clerkUser: user,
-			isTldraw:
-				user?.primaryEmailAddress?.verification.status === 'verified' &&
-				user.primaryEmailAddress.emailAddress.endsWith('@tldraw.com'),
+			isTldraw: getIsTldrawStaff(user),
 			getToken: async () => {
 				const token = await getToken()
 				assert(token)
 				return token
 			},
 		}
-	}, [getToken, isSignedIn, user, app])
+	}, [getToken, isSignedIn, user])
 
-	if (!isLoaded || !isAuthLoaded || !app) {
+	if (!isLoaded || !isAuthLoaded) {
 		// Render a blank editor surface while auth loads, with no spinner or fade.
 		return <div className="tldraw__editor" />
 	}
@@ -54,10 +54,4 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
 export function useTldrawCurrentUser() {
 	return useContext(UserContext)
-}
-
-export function useLoggedInUser() {
-	const user = useTldrawCurrentUser()
-	if (!user) throw new Error('User not signed in')
-	return user
 }

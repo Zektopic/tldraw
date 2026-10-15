@@ -146,6 +146,44 @@ describe('AtomMap', () => {
 		})
 	})
 
+	describe('getOrInsert and getOrInsertComputed', () => {
+		it('[AM9] returns the existing value for a present key', () => {
+			const map = new AtomMap('test', [['a', 1]])
+			expect(map.getOrInsert('a', 2)).toBe(1)
+			expect(map.getOrInsertComputed('a', () => 3)).toBe(1)
+			expect(map.get('a')).toBe(1)
+		})
+
+		it('[AM9] inserts and returns the new value for an absent key', () => {
+			const map = new AtomMap<string, number>('test')
+			expect(map.getOrInsert('a', 1)).toBe(1)
+			expect(map.get('a')).toBe(1)
+
+			expect(map.getOrInsertComputed('b', (key) => key.length)).toBe(1)
+			expect(map.get('b')).toBe(1)
+		})
+
+		it('[AM9] only runs the callback when the key is absent', () => {
+			const map = new AtomMap<string, number>('test')
+			const callback = vi.fn(() => 1)
+
+			map.getOrInsertComputed('a', callback)
+			expect(callback).toHaveBeenCalledTimes(1)
+
+			map.getOrInsertComputed('a', callback)
+			expect(callback).toHaveBeenCalledTimes(1)
+		})
+
+		it('[AM9] reacts to a later insert of a key that was absent', () => {
+			const map = new AtomMap<string, number>('test')
+			const cb = testReactor('getOrInsert', () => map.get('a'))
+			expect(cb).toHaveBeenCalledTimes(1)
+
+			map.getOrInsert('a', 1)
+			expect(cb).toHaveBeenCalledTimes(2)
+		})
+	})
+
 	describe('delete', () => {
 		it('[AM4] deletes values and returns whether the key existed', () => {
 			const map = new AtomMap('test')
@@ -299,6 +337,13 @@ describe('AtomMap', () => {
 			expect(bReactor).toHaveLastReturnedWith(undefined)
 			expect(dReactor).toHaveBeenCalledTimes(2)
 			expect(dReactor).toHaveLastReturnedWith(undefined)
+		})
+
+		it('[AM4] does not capture the map', () => {
+			const map = new AtomMap('test', [['a', 1]])
+			const reactor = testReactor('remover', () => map.deleteMany(['a']))
+			map.set('b', 2)
+			expect(reactor).toHaveBeenCalledTimes(1)
 		})
 	})
 
@@ -590,5 +635,36 @@ describe('AtomMap', () => {
 	it('[AM8] has the AtomMap string tag', () => {
 		const map = new AtomMap('test')
 		expect(Object.prototype.toString.call(map)).toBe('[object AtomMap]')
+	})
+})
+
+describe('AtomMap: Map parity (AM)', () => {
+	it('[AM6] an entry deleted before iteration reaches it is skipped, like Map', () => {
+		const map = new AtomMap('test', [
+			['a', 1],
+			['b', 2],
+			['c', 3],
+		])
+		const visited: string[] = []
+		for (const [key] of map) {
+			visited.push(key)
+			if (key === visited[0]) {
+				// delete the two keys we have not reached yet
+				for (const other of ['a', 'b', 'c']) if (other !== key) map.delete(other)
+			}
+		}
+		expect(visited).toHaveLength(1)
+		expect(Array.from(map.keys())).toEqual(visited)
+
+		const cleared = new AtomMap('test2', [
+			['a', 1],
+			['b', 2],
+		])
+		const seen: string[] = []
+		for (const key of cleared.keys()) {
+			seen.push(key)
+			cleared.clear()
+		}
+		expect(seen).toHaveLength(1)
 	})
 })

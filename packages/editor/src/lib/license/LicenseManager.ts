@@ -1,4 +1,5 @@
-import { atom } from '@tldraw/state'
+import { atom, transact } from '@tldraw/state'
+import { noop } from '@tldraw/utils'
 import { publishDates, version } from '../../version'
 import { getDefaultCdnBaseUrl } from '../utils/assets'
 import { importPublicKey, str2ab } from '../utils/licensing'
@@ -22,6 +23,12 @@ export const FLAGS = {
 	// Native means the license is for native apps which switches
 	// on special-case logic.
 	NATIVE_LICENSE: 1 << 5,
+
+	// -- FEATURE FLAGS --
+	// Collaboration is the umbrella flag for collaboration features; it grants all sub-features.
+	FEAT_COLLABORATION: 1 << 6,
+	// Commenting is the first sub-feature of collaboration.
+	FEAT_COMMENTING: 1 << 7,
 }
 const HIGHEST_FLAG = Math.max(...Object.values(FLAGS))
 
@@ -35,6 +42,28 @@ const NUMBER_OF_KNOWN_PROPERTIES = Object.keys(PROPERTIES).length
 
 const LICENSE_EMAIL = 'sales@tldraw.com'
 
+/**
+ * tldraw's own public domains. A page served from one of these hosts — or any subdomain of one — is
+ * licensed without a key, because we own them: minting and rotating keys for our own properties was
+ * a recurring source of expired and wrong-domain deployments.
+ *
+ * This list ships in the bundle, so it holds only domains we already serve from publicly. tldraw's
+ * private domains are deliberately absent and keep using a real license key.
+ */
+const CANONICAL_TLDRAW_HOSTS = [
+	'tldraw.com',
+	'tldraw.dev',
+	'tldraw.club',
+	'tldraw.workers.dev',
+	'tldraw.xyz',
+]
+
+/** Marks a license as the keyless canonical-host grant, which is never tracked. */
+const CANONICAL_HOST_LICENSE_ID = 'tldraw-canonical-host'
+
+/** The canonical-host grant has no key behind it, and so no expiry date to fall due. */
+const CANONICAL_HOST_NEVER_EXPIRES = new Date(8640000000000000)
+
 const WATERMARK_TRACK_SRC = `${getDefaultCdnBaseUrl()}/watermarks/watermark-track.svg`
 
 /** @internal */
@@ -43,6 +72,23 @@ export interface LicenseInfo {
 	hosts: string[]
 	flags: number
 	expiryDate: string
+}
+
+/**
+ * Names of the licensable product features gated by the license. `collaboration` is an umbrella
+ * that also grants all of its sub-features (currently just `commenting`).
+ *
+ * @internal
+ */
+export type LicenseFeatureName = 'collaboration' | 'commenting'
+
+const NO_FEATURES: Readonly<Record<LicenseFeatureName, boolean>> = {
+	collaboration: false,
+	commenting: false,
+}
+const ALL_FEATURES: Readonly<Record<LicenseFeatureName, boolean>> = {
+	collaboration: true,
+	commenting: true,
 }
 
 /** @internal */
@@ -84,6 +130,8 @@ export interface ValidLicenseKeyResult {
 	isLicensedWithWatermark: boolean
 	isEvaluationLicense: boolean
 	isEvaluationLicenseExpired: boolean
+	isCollaborationEnabled: boolean
+	isCommentingEnabled: boolean
 	daysSinceExpiry: number
 }
 
@@ -98,7 +146,11 @@ export class LicenseManager {
 	public isTest: boolean
 	public isCryptoAvailable: boolean
 	state = atom<LicenseState>('license state', 'pending')
+	featureFlags = atom<Record<LicenseFeatureName, boolean>>('license feature flags', {
+		...NO_FEATURES,
+	})
 	public verbose = true
+	private isDisposed = false
 
 	constructor(licenseKey: string | undefined, testPublicKey?: string) {
 		this.isTest = process.env.NODE_ENV === 'test'
@@ -106,8 +158,19 @@ export class LicenseManager {
 		this.publicKey = testPublicKey || this.publicKey
 		this.isCryptoAvailable = !!crypto.subtle
 
+		// In development every feature is enabled (see `getEnabledFeatures`), and that doesn't depend
+		// on the async validation result. Reflect it eagerly so features aren't reported as disabled
+		// during the validation window — or left disabled if validation rejects (the `.catch` below
+		// never sets `featureFlags`). In production the fail-closed default stands until validation.
+		if (this.isDevelopment) {
+			this.featureFlags.set({ ...ALL_FEATURES })
+		}
+
 		this.getLicenseFromKey(licenseKey)
 			.then((result) => {
+				// replaced by a manager for a newer key: this one's messages, tracking ping and state
+				// would describe a key the app no longer uses
+				if (this.isDisposed) return
 				const licenseState = getLicenseState(
 					result,
 					(messages: string[]) => this.outputMessages(messages),
@@ -116,21 +179,55 @@ export class LicenseManager {
 
 				this.maybeTrack(result, licenseState)
 
-				this.state.set(licenseState)
+				// Update both atoms atomically so dependents never observe the license state and the
+				// feature flags out of sync mid-update.
+				transact(() => {
+					this.state.set(licenseState)
+					this.featureFlags.set(getEnabledFeatures(result, licenseState, this.isDevelopment))
+				})
 			})
 			.catch((error) => {
+				if (this.isDisposed) return
 				console.error('License validation failed:', error)
 				this.state.set('unlicensed')
 			})
 	}
 
+	/** Ignore the pending validation: nothing is logged, tracked or set once the manager is replaced. */
+	dispose() {
+		this.isDisposed = true
+	}
+
+	/**
+	 * Returns whether a given licensable feature is enabled. Reactive: reading this inside a signal
+	 * recomputes when license validation resolves.
+	 */
+	isFeatureEnabled(feature: LicenseFeatureName): boolean {
+		return this.featureFlags.get()[feature]
+	}
+
 	private getIsDevelopment() {
-		// If we are using https on a non-loopback domain we assume it's a production env and a development one otherwise
+		const { protocol, hostname } = this.getOriginLocation()
+
+		// Tauri uses `tauri://localhost` on macOS and Linux and `http://tauri.localhost` on Windows.
+		if (hostname.endsWith('.localhost')) {
+			return process.env.NODE_ENV !== 'production'
+		}
+
 		return (
-			!['https:', 'vscode-webview:'].includes(window.location.protocol) ||
-			this.isLoopbackHost(window.location.hostname) ||
+			protocol === 'http:' ||
+			(protocol === 'https:' && this.isLoopbackHost(hostname)) ||
 			process.env.NODE_ENV !== 'production'
 		)
+	}
+
+	private getOriginLocation() {
+		// A document loaded from `blob:https://example.com/<uuid>` has protocol `blob:` and an empty
+		// hostname, but its origin is the page that created the blob. Opaque origins ('null': custom
+		// schemes, file:, about:) keep using the location.
+		const { origin, protocol, hostname } = window.location
+		const source = origin && origin !== 'null' ? new URL(origin) : { protocol, hostname }
+		return { protocol: source.protocol, hostname: source.hostname.toLowerCase() }
 	}
 
 	private isLoopbackHost(hostname: string) {
@@ -139,7 +236,55 @@ export class LicenseManager {
 		return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host)
 	}
 
+	/** Whether the page is served from one of tldraw's own domains, or a subdomain of one. */
+	private isCanonicalTldrawHost() {
+		const hostname = window.location.hostname.toLowerCase()
+		return CANONICAL_TLDRAW_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`))
+	}
+
+	/**
+	 * The license tldraw's own domains get without a key. It keeps the watermark — our properties
+	 * advertise the SDK the same way any other watermarked deployment does — and grants the
+	 * collaboration features our apps are built on.
+	 *
+	 * Every expiry-derived field is a literal rather than something computed from a date, because
+	 * there is no key here to expire: the grant lasts as long as the host is ours.
+	 */
+	private getCanonicalHostLicense(): ValidLicenseKeyResult {
+		return {
+			isLicenseParseable: true,
+			license: {
+				id: CANONICAL_HOST_LICENSE_ID,
+				hosts: [window.location.hostname.toLowerCase()],
+				flags: FLAGS.WITH_WATERMARK | FLAGS.FEAT_COLLABORATION | FLAGS.FEAT_COMMENTING,
+				expiryDate: CANONICAL_HOST_NEVER_EXPIRES.toISOString(),
+			},
+			isDevelopment: this.isDevelopment,
+			isDomainValid: true,
+			expiryDate: CANONICAL_HOST_NEVER_EXPIRES,
+			isAnnualLicense: false,
+			isAnnualLicenseExpired: false,
+			isPerpetualLicense: false,
+			isPerpetualLicenseExpired: false,
+			isInternalLicense: false,
+			isNativeLicense: false,
+			isLicensedWithWatermark: true,
+			isEvaluationLicense: false,
+			isEvaluationLicenseExpired: false,
+			isCollaborationEnabled: true,
+			isCommentingEnabled: true,
+			daysSinceExpiry: 0,
+		}
+	}
+
 	private getTrackType(result: LicenseFromKeyResult, licenseState: LicenseState): TrackType {
+		// Our own domains are licensed without a key, and the watermark ping exists to tell us about
+		// deployments we don't already know about. Reporting our own apps back to ourselves would only
+		// add noise to the numbers we read, so the canonical-host grant is never tracked.
+		if ('license' in result && result.license.id === CANONICAL_HOST_LICENSE_ID) {
+			return null
+		}
+
 		// Track watermark for unlicensed production deployments
 		if (licenseState === 'unlicensed-production') {
 			return 'unlicensed'
@@ -191,8 +336,9 @@ export class LicenseManager {
 			url.searchParams.set('environment', process.env.NODE_ENV)
 		}
 
+		// best-effort: a blocked or offline request must not surface as an unhandled rejection
 		// eslint-disable-next-line no-restricted-globals
-		fetch(url.toString())
+		fetch(url.toString()).catch(noop)
 	}
 
 	private async extractLicenseKey(licenseKey: string): Promise<LicenseInfo> {
@@ -247,6 +393,12 @@ export class LicenseManager {
 	}
 
 	async getLicenseFromKey(licenseKey?: string): Promise<LicenseFromKeyResult> {
+		// A key that is provided still wins, so an app on one of our hosts can opt into a different
+		// license — a native or feature-specific key — just by passing it.
+		if (!licenseKey && this.isCanonicalTldrawHost()) {
+			return this.getCanonicalHostLicense()
+		}
+
 		if (!licenseKey) {
 			if (!this.isDevelopment) {
 				this.outputNoLicenseKeyProvided()
@@ -286,6 +438,12 @@ export class LicenseManager {
 			const isPerpetualLicenseExpired =
 				isPerpetualLicense && this.isPerpetualLicenseExpired(expiryDate)
 
+			// The collaboration umbrella grants all of its sub-features, so commenting is enabled
+			// by either the commenting flag or the collaboration flag.
+			const isCollaborationEnabled = this.isFlagEnabled(licenseInfo.flags, FLAGS.FEAT_COLLABORATION)
+			const isCommentingEnabled =
+				isCollaborationEnabled || this.isFlagEnabled(licenseInfo.flags, FLAGS.FEAT_COMMENTING)
+
 			// For perpetual licenses, the calendar expiry date only gates access to future
 			// major/minor releases; it does not "expire" the license itself. While the user
 			// is still on a covered version we report `daysSinceExpiry` as 0 so consumers
@@ -309,6 +467,8 @@ export class LicenseManager {
 				isEvaluationLicense,
 				isEvaluationLicenseExpired:
 					isEvaluationLicense && this.isEvaluationLicenseExpired(expiryDate),
+				isCollaborationEnabled,
+				isCommentingEnabled,
 				daysSinceExpiry,
 			}
 			this.outputLicenseInfoIfNeeded(result)
@@ -322,7 +482,7 @@ export class LicenseManager {
 	}
 
 	private isDomainValid(licenseInfo: LicenseInfo) {
-		const currentHostname = window.location.hostname.toLowerCase()
+		const currentHostname = this.getOriginLocation().hostname
 
 		return licenseInfo.hosts.some((host) => {
 			const normalizedHostOrUrlRegex = host.toLowerCase().trim()
@@ -350,7 +510,9 @@ export class LicenseManager {
 
 			// Glob testing, we only support '*.somedomain.com' right now.
 			if (host.includes('*')) {
-				const globToRegex = new RegExp(host.replace(/\*/g, '.*?'))
+				const globToRegex = new RegExp(
+					normalizedHostOrUrlRegex.replace(/\./g, '\\.').replace(/\*/g, '.*?') + '$'
+				)
 				return globToRegex.test(currentHostname) || globToRegex.test(`www.${currentHostname}`)
 			}
 
@@ -481,6 +643,45 @@ export class LicenseManager {
 	}
 
 	static className = 'tl-watermark_SEE-LICENSE'
+}
+
+/**
+ * Derives which licensable features are enabled from the parse result and the derived license
+ * state. In development every feature is enabled so SDK developers can build against them; in
+ * production a feature requires both an active, valid license and the corresponding flag.
+ *
+ * @internal
+ */
+export function getEnabledFeatures(
+	result: LicenseFromKeyResult,
+	licenseState: LicenseState,
+	isDevelopment: boolean
+): Record<LicenseFeatureName, boolean> {
+	// Development gets all features so SDK developers can build against them.
+	if (isDevelopment) {
+		return { ...ALL_FEATURES }
+	}
+
+	// Features require an active, valid license. Both the 30-day grace-period 'licensed' state and
+	// the watermark state count as valid; unlicensed/expired/pending do not.
+	if (
+		!result.isLicenseParseable ||
+		(licenseState !== 'licensed' && licenseState !== 'licensed-with-watermark')
+	) {
+		return { ...NO_FEATURES }
+	}
+
+	// Evaluation licenses get every feature so prospects can trial the whole product without us
+	// having to mint per-feature evaluation keys. Expired evaluation licenses are already excluded
+	// above: they resolve to the 'expired' state.
+	if (result.isEvaluationLicense) {
+		return { ...ALL_FEATURES }
+	}
+
+	return {
+		collaboration: result.isCollaborationEnabled,
+		commenting: result.isCommentingEnabled,
+	}
 }
 
 export function getLicenseState(

@@ -13,11 +13,11 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"resolveJsonModule": true,
+		"noUncheckedSideEffectImports": false,
 		"noEmit": true,
 		"jsx": "react-jsx",
 		"incremental": true,
 		"composite": true,
-		"importHelpers": false,
 		"skipDefaultLibCheck": true
 	},
 	"include": ["src", "../messages", "scripts"],

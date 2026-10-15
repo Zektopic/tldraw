@@ -375,6 +375,67 @@ describe('TLSyncClient', () => {
 			expect(pushWithPage!.diff![localPage.id][0]).toBe(RecordOpType.Put)
 		})
 
+		it('[CL5] a reconnect flushes pending store history first, so a change queued behind the frame throttle is neither lost nor resurrected', () => {
+			connectClient()
+
+			socket.mockConnectionStatus('offline')
+			const localPage = makePage('Offline Page')
+			store.put([localPage]) // reaches speculativeChanges
+
+			// In the browser the store delivers history on the next animation frame, so the client's
+			// view of speculative changes can lag the store. Hold the next flush back the same way.
+			const flushHistory = store._flushHistory
+			store._flushHistory = () => {}
+			store.remove([localPage.id]) // ...so this delete is still queued when we reconnect
+			store._flushHistory = flushHistory
+
+			socket.mockConnectionStatus('online')
+			socket.mockServerMessage(
+				createConnectMessage({ hydrationType: 'wipe_presence', serverClock: 2, diff: {} })
+			)
+			vi.advanceTimersByTime(100)
+
+			// the user deleted the page: it must not come back, and must not be pushed as a put
+			expect(store.get(localPage.id)).toBeUndefined()
+			expect(
+				getSentPushes().some((msg) => msg.diff?.[localPage.id]?.[0] === RecordOpType.Put)
+			).toBe(false)
+		})
+
+		it('[CL5] a store listener that throws during the reconnect flush does not stall the connect', () => {
+			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+			try {
+				client = createClient()
+				let listenerThrown = false
+				store.listen(() => {
+					if (listenerThrown) return
+					listenerThrown = true
+					throw new Error('listener error')
+				})
+
+				// queue a local change behind the frame throttle so the connect flush delivers it
+				const flushHistory = store._flushHistory
+				store._flushHistory = () => {}
+				const localPage = makePage('Local Page', 'a5')
+				store.put([localPage])
+				store._flushHistory = flushHistory
+
+				const serverDiff = documentScopeDiff()
+				delete serverDiff[localPage.id] // the server never saw it
+				socket.mockServerMessage(createConnectMessage({ diff: serverDiff }))
+				vi.advanceTimersByTime(100)
+
+				expect(client.isConnectedToRoom).toBe(true)
+				expect(onLoad).toHaveBeenCalled()
+				expect(store.get(localPage.id)).toEqual(localPage)
+				expect(
+					getSentPushes().some((msg) => msg.diff?.[localPage.id]?.[0] === RecordOpType.Put)
+				).toBe(true)
+			} finally {
+				consoleSpy.mockRestore()
+			}
+		})
+
 		it('[CL6] wipe_all reconnect wipes document records before applying the server diff', () => {
 			client = createClient()
 
@@ -476,13 +537,20 @@ describe('TLSyncClient', () => {
 			client = createClient()
 			socket.mockServerMessage(createConnectMessage({ isReadonly: false }))
 			expect(client.isConnectedToRoom).toBe(true)
-			expect(onAfterConnect).toHaveBeenCalledWith(client, { isReadonly: false })
+			// objectAccess defaults to 'write' when the server doesn't send it
+			expect(onAfterConnect).toHaveBeenCalledWith(client, {
+				isReadonly: false,
+				objectAccess: 'write',
+			})
 
 			// reconnect as readonly
 			socket.mockConnectionStatus('offline')
 			socket.mockConnectionStatus('online')
 			socket.mockServerMessage(createConnectMessage({ isReadonly: true }))
-			expect(onAfterConnect).toHaveBeenLastCalledWith(client, { isReadonly: true })
+			expect(onAfterConnect).toHaveBeenLastCalledWith(client, {
+				isReadonly: true,
+				objectAccess: 'write',
+			})
 		})
 
 		it('[CL7] pushes the current presence state after connecting', () => {
@@ -591,19 +659,55 @@ describe('TLSyncClient', () => {
 			expect(socket.getSentMessages().filter((m) => m.type === 'ping')).toHaveLength(2)
 		})
 
-		it('[CL9] warns and resets the connection after 10 seconds without server interaction', () => {
+		it('[CL9][CL14] resets when pings keep being sent but nothing comes back (half-open socket)', () => {
 			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 			client = createClient()
 			socket.mockServerMessage(createConnectMessage())
 
-			// advance time beyond the health check threshold
-			vi.advanceTimersByTime(15000)
+			// pings at 5s/10s go unanswered but the sends still "succeed"
+			vi.advanceTimersByTime(10_000)
+			// health tick at 10s: the oldest unanswered ping (t=5s) is only 5s old — not yet overdue
+			expect(client.isConnectedToRoom).toBe(true)
 
-			expect(consoleSpy).toHaveBeenCalledWith(
-				expect.stringContaining("Haven't heard from the server in a while")
-			)
+			vi.advanceTimersByTime(10_000)
+			// health tick at 20s: the t=5s ping is 15s old, past PONG_TIMEOUT — evidence of a dead socket
 			expect(client.isConnectedToRoom).toBe(false)
+			expect(consoleSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Haven't heard from the server"),
+				expect.objectContaining({ pingOutstandingMs: expect.any(Number) })
+			)
+			consoleSpy.mockRestore()
+		})
 
+		it('[CL14] a pong landing in the same millisecond as the ping still counts as an answer', () => {
+			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+			client = createClient()
+			socket.mockServerMessage(createConnectMessage())
+
+			// three ping/pong rounds where the pong arrives in the same ms as the ping send
+			for (let i = 0; i < 3; i++) {
+				vi.advanceTimersByTime(5000)
+				socket.mockServerMessage({ type: 'pong' })
+			}
+			expect(client.isConnectedToRoom).toBe(true)
+
+			// then the socket dies: the t=20s ping goes unanswered and must still convict.
+			// Guards the >= in the marker-advance rule: with > the same-ms pongs above would
+			// freeze the marker and the dead socket would never reset.
+			vi.advanceTimersByTime(25_000)
+			expect(client.isConnectedToRoom).toBe(false)
+			consoleSpy.mockRestore()
+		})
+
+		it('[CL14] the unanswered-ping marker clears on connection reset', () => {
+			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+			client = createClient()
+			socket.mockServerMessage(createConnectMessage())
+
+			// drive a reset via a dead socket
+			vi.advanceTimersByTime(20_000)
+			expect(client.isConnectedToRoom).toBe(false)
+			expect((client as any).firstUnansweredPingAt).toBeNull()
 			consoleSpy.mockRestore()
 		})
 
@@ -619,10 +723,32 @@ describe('TLSyncClient', () => {
 			vi.advanceTimersByTime(4000)
 			expect(client.isConnectedToRoom).toBe(true)
 
-			// at t=20s nothing has been heard since the pong, so the connection resets
-			vi.advanceTimersByTime(10000)
+			// at t=15s the oldest unanswered ping (t=10s) is 5s old — not yet overdue
+			vi.advanceTimersByTime(5000)
+			expect(client.isConnectedToRoom).toBe(true)
+
+			// at t=20s it is exactly PONG_TIMEOUT old — reset
+			vi.advanceTimersByTime(5000)
 			expect(client.isConnectedToRoom).toBe(false)
 
+			consoleSpy.mockRestore()
+		})
+
+		it('[CL9] does not reset a healthy connection when timers wake infrequently (hidden-tab throttling)', () => {
+			const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+			client = createClient()
+			socket.mockServerMessage(createConnectMessage())
+
+			// Chrome batches a hidden tab's timers to ~1/min wakes: the clock jumps, then the
+			// delayed ping + health ticks fire together, and the pong arrives right after.
+			for (let i = 0; i < 3; i++) {
+				vi.setSystemTime(Date.now() + 60_000)
+				vi.advanceTimersByTime(10_000)
+				expect(client.isConnectedToRoom).toBe(true)
+				socket.mockServerMessage({ type: 'pong' })
+			}
+
+			expect(consoleSpy).not.toHaveBeenCalled()
 			consoleSpy.mockRestore()
 		})
 

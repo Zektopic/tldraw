@@ -6,7 +6,6 @@
 
 import { default as isEqual } from 'lodash.isequal';
 import { default as isEqualWith } from 'lodash.isequalwith';
-import { default as throttle } from 'lodash.throttle';
 import { default as uniq } from 'lodash.uniq';
 
 // @internal
@@ -156,6 +155,9 @@ export function getChangedKeys<T extends object>(obj1: T, obj2: T): (keyof T)[];
 export function getErrorAnnotations(error: Error): ErrorAnnotations;
 
 // @public
+export function getFirstCharacter(str: string): string;
+
+// @public
 export function getFirstFromIterable<T = unknown>(set: Map<any, T> | Set<T>): T;
 
 // @internal
@@ -241,6 +243,9 @@ export function isNonNull<T>(value: T): value is typeof value extends null ? nev
 export function isNonNullish<T>(value: T): value is typeof value extends undefined ? never : typeof value extends null ? never : T;
 
 // @public
+export function iterateGraphemes(str: string): IterableIterator<string>;
+
+// @public
 export type JsonArray = JsonValue[];
 
 // @public
@@ -267,6 +272,8 @@ export function lns(str: string): string;
 // @public
 export class LruCache<K, V> {
     constructor(maxSize: number);
+    // (undocumented)
+    delete(key: K): boolean;
     // (undocumented)
     get(key: K): undefined | V;
     // (undocumented)
@@ -458,7 +465,7 @@ export function retry<T>(fn: (args: {
     attempt: number;
     remaining: number;
     total: number;
-}) => Promise<T>, { attempts, waitDuration, abortSignal, matchError }?: {
+}) => Promise<T>, { attempts, waitDuration, abortSignal, matchError, }?: {
     abortSignal?: AbortSignal;
     attempts?: number;
     matchError?(error: unknown): boolean;
@@ -510,7 +517,19 @@ export const STRUCTURED_CLONE_OBJECT_PROTOTYPE: any;
 const structuredClone_2: <T>(i: T) => T;
 export { structuredClone_2 as structuredClone }
 
-export { throttle }
+// @public
+export const throttle: <T extends (...args: any[]) => any>(fn: T, wait?: number, options?: {
+    leading?: boolean;
+    trailing?: boolean;
+}) => ThrottledFunction<T>;
+
+// @public
+export interface ThrottledFunction<T extends (...args: any[]) => any> {
+    // (undocumented)
+    (...args: Parameters<T>): ReturnType<T> | undefined;
+    cancel(): void;
+    flush(): ReturnType<T> | undefined;
+}
 
 // @internal
 export function throttleToNextFrame(fn: () => void): () => void;
@@ -518,13 +537,19 @@ export function throttleToNextFrame(fn: () => void): () => void;
 // @public
 export class Timers {
     constructor();
+    cancelAnimationFrame(contextId: string, id: number | undefined): void;
+    clearInterval(contextId: string, id: number | undefined): void;
+    clearTimeout(contextId: string, id: number | undefined): void;
     dispose(contextId: string): void;
     disposeAll(): void;
     forContext(contextId: string): {
+        cancelAnimationFrame: (id: number | undefined) => void;
+        clearInterval: (id: number | undefined) => void;
+        clearTimeout: (id: number | undefined) => void;
         dispose: () => void;
         requestAnimationFrame: (callback: FrameRequestCallback) => number;
-        setInterval: (handler: TimerHandler, timeout?: number | undefined, ...args: any[]) => number;
-        setTimeout: (handler: TimerHandler, timeout?: number | undefined, ...args: any[]) => number;
+        setInterval: (handler: TimerHandler, timeout?: number, ...args: any[]) => number;
+        setTimeout: (handler: TimerHandler, timeout?: number, ...args: any[]) => number;
     };
     requestAnimationFrame(contextId: string, callback: FrameRequestCallback): number;
     setInterval(contextId: string, handler: TimerHandler, timeout?: number, ...args: any[]): number;

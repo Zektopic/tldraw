@@ -28,6 +28,7 @@ export class Sidebar {
 	public readonly themeButton: Locator
 	public readonly darkModeButton: Locator
 	public readonly signOutButton: Locator
+	private lastCreatedAt = 0
 	constructor(public readonly page: Page) {
 		this.sidebarLayout = this.page.getByTestId('tla-sidebar-layout')
 		this.sidebar = this.page.getByTestId('tla-sidebar')
@@ -55,6 +56,9 @@ export class Sidebar {
 	async createNewDocument(name?: string) {
 		const numDocuments = await this.getNumberOfFiles()
 		const previousUrl = this.page.url()
+		// the create button swallows clicks for 1s after a create; lastCreatedAt is set later, so this over-waits
+		const throttleLeft = this.lastCreatedAt + 1100 - Date.now()
+		if (throttleLeft > 0) await this.page.waitForTimeout(throttleLeft)
 		await this.createFileButton.click()
 		const input = this.page.getByTestId('tla-sidebar-rename-input')
 		await expect(input).toBeVisible()
@@ -70,10 +74,7 @@ export class Sidebar {
 			this.page.keyboard.press('Enter'),
 		])
 		await expect.poll(() => this.getNumberOfFiles()).toBe(numDocuments + 1)
-		// give the websocket a chance to catch up
-		await this.mutationResolution()
-		// the create button has a 1000ms throttle - wait so the next creation isn't swallowed
-		await this.page.waitForTimeout(1100)
+		this.lastCreatedAt = Date.now()
 	}
 
 	async getNumberOfFiles() {
@@ -92,7 +93,6 @@ export class Sidebar {
 		await this.openUserSettingsMenu()
 		await this.themeButton.hover()
 		await this.darkModeButton.click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -119,7 +119,6 @@ export class Sidebar {
 		await this.openLanguageMenu(languageButtonText)
 		await this.page.getByRole('menuitemcheckbox', { name: language }).click()
 		await this.page.keyboard.press('Escape')
-		await this.mutationResolution()
 	}
 
 	@step
@@ -174,7 +173,6 @@ export class Sidebar {
 	@step
 	private async deleteFromFileMenu() {
 		await this.page.getByRole('menuitem', { name: 'Delete' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -182,31 +180,20 @@ export class Sidebar {
 		const fileLink = this.getFileLink('today', index)
 		await this.openFileMenu(fileLink)
 		await this.renameFromFileMenu(newName)
-		await this.mutationResolution()
 	}
 
 	@step
 	async renameFileByName(fileName: string, newName: string) {
 		await this.openFileMenuByName(fileName)
 		await this.renameFromFileMenu(newName)
-		await this.mutationResolution()
-	}
-
-	async mutationResolution() {
-		await expect(async () => {
-			await this.page.evaluate(async () => {
-				await (window as any).app?.z?.__e2e__waitForMutationResolution?.()
-			})
-		}).toPass()
 	}
 
 	@step
 	async renameFromFileMenu(name: string) {
 		await this.page.getByRole('menuitem', { name: 'Rename' }).click()
-		const input = this.page.getByRole('textbox')
+		const input = this.page.getByTestId('tla-sidebar-rename-input')
 		await input.fill(name)
 		await this.page.keyboard.press('Enter')
-		await this.mutationResolution()
 	}
 
 	@step
@@ -219,7 +206,6 @@ export class Sidebar {
 			await input.fill(name)
 		}
 		await this.page.keyboard.press('Enter')
-		await this.mutationResolution()
 	}
 
 	@step
@@ -227,7 +213,6 @@ export class Sidebar {
 		const fileLink = this.getFileLink('today', index)
 		await this.openFileMenu(fileLink)
 		await this.page.getByRole('menuitem', { name: 'Pin' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -235,7 +220,6 @@ export class Sidebar {
 		const fileLink = this.getFileLink('pinned', index)
 		await this.openFileMenu(fileLink)
 		await this.page.getByRole('menuitem', { name: 'Unpin' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -243,7 +227,6 @@ export class Sidebar {
 		const fileLink = this.getFileLink('today', index)
 		await this.openFileMenu(fileLink)
 		await this.duplicateFromFileMenu(name)
-		await this.mutationResolution()
 	}
 
 	@step
@@ -251,10 +234,17 @@ export class Sidebar {
 		await this.page.getByRole('menuitem', { name: 'Copy link' }).click()
 	}
 
+	// The clipboard belongs to the browser, which outlives each test in a worker, so it can still
+	// hold a URL copied by an earlier test. Clear it before copying, or a copy that hasn't landed
+	// yet (or was a no-op) reads back as that stale URL.
+	async clearClipboard() {
+		await this.page.evaluate(() => navigator.clipboard.writeText(''))
+	}
+
 	// The app writes to the clipboard asynchronously after the copy action, so reading it once can
 	// return a stale or empty value. Poll until the clipboard holds a valid URL (optionally matching
 	// an expected path) to avoid races.
-	private async readClipboardUrl(pathPattern?: RegExp): Promise<string> {
+	async readClipboardUrl(pathPattern?: RegExp): Promise<string> {
 		let value = ''
 		await expect(async () => {
 			value = await this.page.evaluate(() => navigator.clipboard.readText())
@@ -268,6 +258,7 @@ export class Sidebar {
 	async copyFileLink(index: number) {
 		const fileLink = this.getFileLink('today', index)
 		await this.openFileMenu(fileLink)
+		await this.clearClipboard()
 		await this.copyFileLinkFromFileMenu()
 		return await this.readClipboardUrl(/^\/f\//)
 	}
@@ -276,6 +267,7 @@ export class Sidebar {
 	async copyFileLinkByName(name: string): Promise<string> {
 		const fileLink = this.getFileByName(name)
 		await this.openFileMenu(fileLink)
+		await this.clearClipboard()
 		await this.copyFileLinkFromFileMenu()
 		return await this.readClipboardUrl(/^\/f\//)
 	}
@@ -328,7 +320,6 @@ export class Sidebar {
 		await input.fill(name)
 
 		await this.page.getByRole('button', { name: 'Create workspace' }).click()
-		await this.mutationResolution()
 
 		// Creating a workspace switches to it and opens its seeded welcome file. That file
 		// arrives named, so (unlike a blank file) there is no inline rename to dismiss.
@@ -468,7 +459,6 @@ export class Sidebar {
 
 		// Close the dialog
 		await this.page.getByRole('button', { name: 'Close' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -481,20 +471,24 @@ export class Sidebar {
 
 		// Confirm in the confirmation dialog, whose button is just "Delete".
 		await this.page.getByRole('button', { name: 'Delete', exact: true }).click()
-		await this.mutationResolution()
 	}
 
 	@step
 	async copyWorkspaceInviteLink(name: string): Promise<string> {
 		// The invite link lives in the Manage workspace dialog and is only exposed via
 		// the Copy button (no visible URL field), so copy it and read it back from the
-		// clipboard. The invite secret can load asynchronously, so poll until valid.
+		// clipboard. A new workspace's invite secret is minted server-side and arrives via sync, and
+		// until it does Copy writes nothing, so poll until the clipboard holds an invite URL.
 		await this.openWorkspaceSettings(name)
+		await this.clearClipboard()
 		const dialog = this.page.getByRole('dialog', { name: 'Manage workspace' })
 		let inviteUrl = ''
 		await expect(async () => {
 			await dialog.getByRole('button', { name: 'Copy invite link' }).click()
-			inviteUrl = await this.readClipboardUrl(/^\/invite\//)
+			// Read once rather than via readClipboardUrl: its own polling would use up this
+			// loop's budget, so Copy would never be clicked again after the secret arrives.
+			inviteUrl = await this.page.evaluate(() => navigator.clipboard.readText())
+			expect(new URL(inviteUrl).pathname).toMatch(/^\/invite\//)
 		}).toPass({ timeout: 10000 })
 		await this.page.getByRole('button', { name: 'Close' }).click()
 		return inviteUrl
@@ -559,22 +553,18 @@ export class Sidebar {
 
 		// Release
 		await this.page.mouse.up()
-
-		await this.mutationResolution()
 	}
 
 	@step
 	async pinFile(fileName: string) {
 		await this.openFileMenuByName(fileName)
 		await this.page.getByRole('menuitem', { name: 'Pin' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
 	async unpinFile(fileName: string) {
 		await this.openFileMenuByName(fileName)
 		await this.page.getByRole('menuitem', { name: 'Unpin' }).click()
-		await this.mutationResolution()
 	}
 
 	@step
@@ -625,17 +615,28 @@ export class Sidebar {
 		await this.duplicateFromFileMenu(newName)
 	}
 
-	@step
-	async openMoveToMenu(fileName: string) {
+	/**
+	 * One attempt at opening the file menu and its move-to submenu. Every wait in here is
+	 * short and bounded so a failed attempt throws quickly and the caller's retry loop gets to
+	 * re-open the file menu — the open click itself is what flakes (the sidebar can re-render
+	 * mid-click and swallow it), so any recovery must include re-clicking, not just re-waiting.
+	 */
+	private async tryOpenMoveToMenu(fileName: string) {
+		// Close whatever menu/submenu a previous attempt left behind.
+		await this.page.keyboard.press('Escape')
+		await this.page.keyboard.press('Escape')
 		await this.openFileMenuByName(fileName)
 		const moveToButton = this.page.getByTestId('dialog-sub.move-to-workspace-button')
-		await expect(async () => {
-			await expect(moveToButton).toBeVisible()
-			await moveToButton.hover({ force: true })
-			await expect(this.page.getByTestId('dialog-sub.move-to-workspace-content')).toBeVisible({
-				timeout: 1000,
-			})
-		}).toPass()
+		await expect(moveToButton).toBeVisible({ timeout: 2000 })
+		await moveToButton.hover({ force: true })
+		await expect(this.page.getByTestId('dialog-sub.move-to-workspace-content')).toBeVisible({
+			timeout: 1000,
+		})
+	}
+
+	@step
+	async openMoveToMenu(fileName: string) {
+		await expect(() => this.tryOpenMoveToMenu(fileName)).toPass({ timeout: 20000 })
 	}
 
 	@step
@@ -651,14 +652,11 @@ export class Sidebar {
 		// destination we're moving to is never the current (checked) one, so its accessible
 		// name is just the workspace name (an unchecked item adds no "checked" prefix).
 		await expect(async () => {
-			await this.page.keyboard.press('Escape')
-			await this.page.keyboard.press('Escape')
-			await this.openMoveToMenu(fileName)
+			await this.tryOpenMoveToMenu(fileName)
 			await this.page
 				.getByRole('menuitemcheckbox', { name: targetWorkspaceName, exact: true })
 				.click({ timeout: 2000 })
 		}).toPass({ timeout: 20000 })
-		await this.mutationResolution()
 	}
 
 	@step

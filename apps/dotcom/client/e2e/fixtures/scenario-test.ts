@@ -104,13 +104,12 @@ export class DotcomActor {
 	}
 
 	async waitForAppReady() {
-		await this.homePage.isLoaded()
+		await this.homePage.expectEditorVisible()
 		await this.waitForEditorReady()
 		await this.waitForAuthLoaded()
 		await this.waitForAppStoreHydrated()
 		await this.waitForFileRoomConnected()
 		await this.waitForVisitorAccessMetadata()
-		await this.waitForMutationResolution()
 	}
 
 	async waitForAuthLoaded() {
@@ -206,12 +205,6 @@ export class DotcomActor {
 			.toBe(0)
 	}
 
-	async waitForMutationResolution() {
-		await this.page.evaluate(async () => {
-			await (window as any).app?.z?.__e2e__waitForMutationResolution?.()
-		})
-	}
-
 	async getCollaboratorCount() {
 		return await this.page.evaluate(() => (window as any).editor?.getCollaborators?.().length ?? 0)
 	}
@@ -263,8 +256,13 @@ class DotcomActors {
 			await context.grantPermissions(['clipboard-read', 'clipboard-write'])
 		}
 
+		await serveCachedClerkAssets(context)
 		const page = await context.newPage()
 		await setupClerkTestingToken({ page })
+		if (account) {
+			const acceptTerms = page.getByTestId('tla-accept-and-continue-button')
+			await page.addLocatorHandler(acceptTerms, () => acceptTerms.click())
+		}
 
 		const actor = new DotcomActor(name, page, context, account?.email)
 		this.openActors.push(actor)
@@ -345,7 +343,6 @@ class DotcomScenario {
 		await actor.page.getByTestId('tools.rectangle').click()
 		await actor.page.locator('.tl-background').click()
 		await actor.editor.expectShapesCount(1)
-		await actor.waitForMutationResolution()
 	}
 
 	async shareFile(actor: DotcomActor, linkType: Exclude<SharedLinkType, 'no-access'> = 'edit') {
@@ -364,7 +361,6 @@ class DotcomScenario {
 
 		if (linkType === 'no-access') {
 			await actor.page.getByRole('switch').uncheck()
-			await actor.waitForMutationResolution()
 			return
 		}
 
@@ -375,22 +371,13 @@ class DotcomScenario {
 			await selectTlaMenuOption(actor.page, select, expectedLabel)
 		}
 		await expect(select).toHaveText(expectedLabel)
-		await actor.waitForMutationResolution()
 	}
 
 	async publishFile(actor: DotcomActor) {
 		await actor.shareMenu.open()
-		await actor.shareMenu.publishFile()
-		const url = await actor.shareMenu.copyLink()
+		const url = await actor.shareMenu.publishFile()
 		await actor.page.keyboard.press('Escape')
-		await actor.waitForMutationResolution()
 		return url
-	}
-
-	async createPublishedFile(actor: DotcomActor, fileName = this.name('published file')) {
-		const file = await this.createPersonalFile(actor, fileName)
-		const publishedUrl = await this.publishFile(actor)
-		return { ...file, publishedUrl }
 	}
 
 	async importFileFromUrl(actor: DotcomActor, url?: string) {
@@ -418,7 +405,39 @@ class DotcomScenario {
 		}
 		await actor.shareMenu.publishChanges()
 		await actor.page.keyboard.press('Escape')
-		await actor.waitForMutationResolution()
+	}
+
+	// Publishing writes R2 via the outbox after the mutation lands, and the published page is
+	// static, so a single reload can still serve the previous snapshot. Poll the API the page
+	// loads from, then reload once.
+	async expectPublishedShapesCount(actor: DotcomActor, expected: number, timeout = 20_000) {
+		const publishedUrl = actor.page.url()
+		await expect
+			.poll(
+				async () => {
+					const response = await actor.page.request.get(getPublishApiUrl(publishedUrl))
+					if (!response.ok()) return null
+					const { records } = (await response.json()) as { records: { typeName: string }[] }
+					return records.filter((r) => r.typeName === 'shape').length
+				},
+				{ timeout }
+			)
+			.toBe(expected)
+		await actor.page.reload()
+		await actor.waitForAppReady()
+		await actor.editor.expectShapesCount(expected)
+	}
+
+	// Unpublishing applies optimistically; the published page only stops resolving once the server
+	// has committed.
+	async expectUnpublished(actor: DotcomActor, publishedUrl: string, timeout = 15_000) {
+		await expect
+			.poll(async () => (await actor.page.request.get(getPublishApiUrl(publishedUrl))).status(), {
+				timeout,
+			})
+			.toBe(404)
+		await actor.page.goto(publishedUrl, { waitUntil: 'load' })
+		await expect(actor.page.getByTestId('tla-error')).toBeVisible()
 	}
 
 	async createLegacyRouteFixture(actor: DotcomActor): Promise<LegacyRouteFixture> {
@@ -471,7 +490,6 @@ class DotcomScenario {
 		await opts.member.goto(invite.inviteUrl)
 		await opts.member.editor.ensureSidebarOpen()
 		await opts.member.workspaceInviteDialog.acceptInvitation()
-		await opts.member.waitForMutationResolution()
 		await opts.member.sidebar.expectWorkspaceVisible(invite.workspaceName)
 		await opts.member.sidebar.switchToWorkspace(invite.workspaceName)
 		await opts.member.sidebar.expectFileVisible(invite.fileName)
@@ -508,11 +526,18 @@ class DotcomScenario {
 			.slice(0, MAX_WORKSPACE_NAME_LENGTH)
 		const fileName = opts.fileName ?? this.name('workspace file')
 
-		await this.goToAndOpenSidebar(opts.owner)
-		await this.goToAndOpenSidebar(opts.member)
+		// Only the owner needs a mounted app; the member is looked up by email.
+		if (!(await opts.owner.page.evaluate(() => !!(window as any).app?.z).catch(() => false))) {
+			await this.goToAndOpenSidebar(opts.owner)
+		}
 
 		if (!opts.member.email) throw new Error('Workspace member actor is not signed in')
-		const memberUserId = await this.database.getUserIdByEmail(opts.member.email)
+		let memberUserId = await this.database.getUserIdByEmail(opts.member.email)
+		if (!memberUserId) {
+			// Stored sign-ins can outlive a wiped database; booting the app recreates the user row.
+			await opts.member.goto()
+			memberUserId = await this.database.getUserIdByEmail(opts.member.email)
+		}
 		if (!memberUserId) throw new Error(`Member user not found: ${opts.member.email}`)
 
 		await opts.owner.editor.ensureSidebarOpen()
@@ -527,15 +552,27 @@ class DotcomScenario {
 				}
 				const workspaceId = uniqueId()
 				const fileId = uniqueId()
-				await app.z.mutate.createWorkspace({ id: workspaceId, name: workspaceName }).client
-				await app.z.mutate.createFile({
+				// Await server acknowledgement (not just optimistic apply) so the file exists
+				// server-side before we navigate to it. These promises never reject — a rejected
+				// mutation resolves with {type: 'error'} — so check the result or a failure
+				// surfaces later as an unrelated timeout.
+				const workspaceRes = await app.z.mutate.createWorkspace({
+					id: workspaceId,
+					name: workspaceName,
+				}).server
+				if (workspaceRes.type !== 'success') {
+					throw new Error(`createWorkspace rejected: ${JSON.stringify(workspaceRes)}`)
+				}
+				const fileRes = await app.z.mutate.createFile({
 					fileId,
 					workspaceId,
 					name: fileName,
 					createSource: null,
 					time: Date.now(),
-				}).client
-				await app.z.__e2e__waitForMutationResolution?.()
+				}).server
+				if (fileRes.type !== 'success') {
+					throw new Error(`createFile rejected: ${JSON.stringify(fileRes)}`)
+				}
 				return { fileId }
 			},
 			{ workspaceName, fileName }
@@ -561,7 +598,6 @@ class DotcomScenario {
 		)
 		// The remove confirmation dialog's button is just "Remove".
 		await opts.owner.page.getByRole('button', { name: 'Remove', exact: true }).click()
-		await opts.owner.waitForMutationResolution()
 		await opts.owner.page.keyboard.press('Escape')
 	}
 
@@ -578,22 +614,7 @@ class DotcomScenario {
 		const roleLabel = opts.role === 'owner' ? 'Owner' : 'Member'
 		await selectTlaMenuOption(opts.owner.page, memberRoleSelect, roleLabel)
 		await expect(memberRoleSelect).toHaveText(roleLabel)
-		await opts.owner.waitForMutationResolution()
 		await opts.owner.page.keyboard.press('Escape')
-	}
-
-	async downgradeClient(actor: DotcomActor) {
-		const userId = await this.getSignedInActorUserId(actor)
-		await actor.page.request.get(
-			`http://localhost:3000/api/app/__test__/user/${userId}/downgrade-client`
-		)
-	}
-
-	async upgradeClient(actor: DotcomActor) {
-		const userId = await this.getSignedInActorUserId(actor)
-		await actor.page.request.get(
-			`http://localhost:3000/api/app/__test__/user/${userId}/upgrade-client`
-		)
 	}
 
 	async goToAndOpenSidebar(actor: DotcomActor) {
@@ -601,13 +622,6 @@ class DotcomScenario {
 
 		await actor.goto()
 		await actor.editor.ensureSidebarOpen()
-	}
-
-	private async getSignedInActorUserId(actor: DotcomActor) {
-		if (!actor.email) throw new Error(`Actor ${actor.name} is not signed in`)
-		const userId = await this.database.getUserIdByEmail(actor.email)
-		if (!userId) throw new Error(`User not found: ${actor.email}`)
-		return userId
 	}
 
 	private async switchToHomeIfAvailable(actor: DotcomActor) {
@@ -648,16 +662,55 @@ export const test = base.extend<ScenarioFixtures, ScenarioWorkerFixtures>({
 	owner: async ({ actors }, testUse) => {
 		await testUse(await actors.open('owner'))
 	},
+	// Most scenarios send member and visitor straight to a shared or invite URL, so booting them at
+	// `/` first would be thrown away. Call `goto()` when a test needs them on the root.
 	member: async ({ actors }, testUse) => {
-		await testUse(await actors.open('member'))
+		await testUse(await actors.open('member', { goto: false }))
 	},
 	visitor: async ({ actors }, testUse) => {
-		await testUse(await actors.open('visitor'))
+		await testUse(await actors.open('visitor', { goto: false }))
 	},
 	scenario: async ({ browser: _browser }, testUse, testInfo) => {
 		await testUse(new DotcomScenario(testInfo))
 	},
 })
+
+// clerk-js is pinned per build, so its /npm/ assets never change within a run. Every actor gets a
+// fresh context, and Clerk's testing route disables the HTTP cache, so without this each boot
+// re-downloads clerk-js from Clerk's CDN.
+const clerkAssetCache = new Map<
+	string,
+	{ status: number; headers: Record<string, string>; body: Buffer }
+>()
+
+async function serveCachedClerkAssets(context: BrowserContext) {
+	await context.route(/^https:\/\/[^/]+\/npm\/@clerk\//, async (route) => {
+		const url = route.request().url()
+		const cached = clerkAssetCache.get(url)
+		if (cached) return await route.fulfill(cached)
+
+		try {
+			const response = await route.fetch()
+			// fetch() hands back the decoded body, so the encoding headers no longer describe it.
+			const {
+				'content-encoding': _encoding,
+				'content-length': _length,
+				...headers
+			} = response.headers()
+			const entry = { status: response.status(), headers, body: await response.body() }
+			if (response.ok()) clerkAssetCache.set(url, entry)
+			await route.fulfill(entry)
+		} catch {
+			// The context can close mid-fetch at teardown.
+			await route.continue().catch(() => {})
+		}
+	})
+}
+
+function getPublishApiUrl(publishedUrl: string) {
+	const slug = new URL(publishedUrl).pathname.split('/p/')[1]
+	return `${ROOT_URL}/api/app/publish/${slug}`
+}
 
 async function ensureStorageState(
 	browser: Browser,

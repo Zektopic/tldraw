@@ -1,5 +1,7 @@
 import { useEditor, useValue } from '@tldraw/editor'
 import { useShowCollaborationUi } from '../../hooks/useCollaborationStatus'
+import { useCommentingEnabled } from '../../hooks/useCommentingEnabled'
+import { useTools } from '../../hooks/useTools'
 import {
 	ArrangeMenuSubmenu,
 	ClipboardMenuGroup,
@@ -11,11 +13,13 @@ import {
 	SelectAllMenuItem,
 } from '../menu-items'
 import { TldrawUiMenuGroup } from '../primitives/menus/TldrawUiMenuGroup'
+import { TldrawUiMenuItem } from '../primitives/menus/TldrawUiMenuItem'
 
 /** @public @react */
 export function DefaultContextMenuContent() {
 	const editor = useEditor()
 	const showCollaborationUi = useShowCollaborationUi()
+	const commentingEnabled = useCommentingEnabled()
 
 	const isSinglePageMode = useValue('isSinglePageMode', () => editor.options.maxPages <= 1, [
 		editor,
@@ -29,7 +33,12 @@ export function DefaultContextMenuContent() {
 
 	return (
 		<>
-			{showCollaborationUi && <CursorChatItem />}
+			{(showCollaborationUi || commentingEnabled) && (
+				<TldrawUiMenuGroup id="cursor-chat">
+					{commentingEnabled && <CommentMenuItem />}
+					{showCollaborationUi && <CursorChatItem />}
+				</TldrawUiMenuGroup>
+			)}
 			<TldrawUiMenuGroup id="modify">
 				<EditMenuSubmenu />
 				<ArrangeMenuSubmenu />
@@ -43,4 +52,11 @@ export function DefaultContextMenuContent() {
 			</TldrawUiMenuGroup>
 		</>
 	)
+}
+
+function CommentMenuItem() {
+	const commentTool = useTools().comment
+	if (!commentTool) return null
+	// `c` enters the tool rather than opening a composer at the menu's point, so don't advertise it.
+	return <TldrawUiMenuItem {...commentTool} kbd={undefined} />
 }

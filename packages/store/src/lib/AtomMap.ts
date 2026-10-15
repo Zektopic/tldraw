@@ -165,6 +165,50 @@ export class AtomMap<K, V> implements Map<K, V> {
 	}
 
 	/**
+	 * Gets the value associated with a key, inserting `defaultValue` first if the key doesn't exist.
+	 * This method is reactive and will cause reactive contexts to update when the value changes.
+	 *
+	 * @param key - The key to retrieve the value for
+	 * @param defaultValue - The value to insert if the key doesn't exist
+	 * @returns The existing value, or `defaultValue` if the key was missing
+	 * @example
+	 * ```ts
+	 * const map = new AtomMap('myMap')
+	 * console.log(map.getOrInsert('count', 0)) // 0, and 'count' is now set
+	 * console.log(map.getOrInsert('count', 10)) // 0
+	 * ```
+	 */
+	getOrInsert(key: K, defaultValue: V): V {
+		return this.getOrInsertComputed(key, () => defaultValue)
+	}
+
+	/**
+	 * Gets the value associated with a key, inserting the result of `callback` first if the key
+	 * doesn't exist. The callback only runs when the key is missing.
+	 * This method is reactive and will cause reactive contexts to update when the value changes.
+	 *
+	 * @param key - The key to retrieve the value for
+	 * @param callback - Called with the key to produce the value to insert
+	 * @returns The existing value, or the newly computed value if the key was missing
+	 * @example
+	 * ```ts
+	 * const map = new AtomMap<string, string[]>('myMap')
+	 * map.getOrInsertComputed('tags', () => []).push('new')
+	 * ```
+	 */
+	getOrInsertComputed(key: K, callback: (key: K) => V): V {
+		const valueAtom = this.getAtom(key)
+		if (valueAtom) {
+			const value = valueAtom.get()
+			if (value !== UNINITIALIZED) return value
+		}
+
+		const value = callback(key)
+		this.set(key, value)
+		return value
+	}
+
+	/**
 	 * Updates an existing value using an updater function.
 	 *
 	 * @param key - The key of the value to update
@@ -231,11 +275,11 @@ export class AtomMap<K, V> implements Map<K, V> {
 	deleteMany(keys: Iterable<K>): [K, V][] {
 		return transact(() => {
 			const deleted: [K, V][] = []
-			const newAtoms = this.atoms.get().withMutations((atoms) => {
+			const newAtoms = this.atoms.__unsafe__getWithoutCapture().withMutations((atoms) => {
 				for (const key of keys) {
 					const valueAtom = atoms.get(key)
 					if (!valueAtom) continue
-					const oldValue = valueAtom.get()
+					const oldValue = valueAtom.__unsafe__getWithoutCapture()
 					assert(oldValue !== UNINITIALIZED)
 
 					deleted.push([key, oldValue])
@@ -290,7 +334,9 @@ export class AtomMap<K, V> implements Map<K, V> {
 	*entries(): Generator<[K, V], undefined, unknown> {
 		for (const [key, valueAtom] of this.atoms.get()) {
 			const value = valueAtom.get()
-			assert(value !== UNINITIALIZED)
+			// The key set is a snapshot taken when iteration started, so a key deleted mid-iteration
+			// still appears in it; skip it, as `Map` skips entries deleted before they are visited.
+			if (value === UNINITIALIZED) continue
 			yield [key, value]
 		}
 	}
@@ -310,7 +356,9 @@ export class AtomMap<K, V> implements Map<K, V> {
 	 * ```
 	 */
 	*keys(): Generator<K, undefined, unknown> {
-		for (const key of this.atoms.get().keys()) {
+		for (const [key, valueAtom] of this.atoms.get()) {
+			// see entries(): skip keys deleted mid-iteration
+			if (valueAtom.__unsafe__getWithoutCapture() === UNINITIALIZED) continue
 			yield key
 		}
 	}
@@ -332,7 +380,8 @@ export class AtomMap<K, V> implements Map<K, V> {
 	*values(): Generator<V, undefined, unknown> {
 		for (const valueAtom of this.atoms.get().values()) {
 			const value = valueAtom.get()
-			assert(value !== UNINITIALIZED)
+			// see entries(): skip keys deleted mid-iteration
+			if (value === UNINITIALIZED) continue
 			yield value
 		}
 	}

@@ -1,12 +1,12 @@
-import { captureException } from '@sentry/react'
-import { TLRemoteSyncError, TLSyncErrorCloseEventReason } from '@tldraw/sync-core'
+import type { TLSyncErrorCloseEventReason } from '@tldraw/sync-core'
 import { Suspense, lazy, useEffect } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { Outlet, Route, createRoutesFromElements, redirect, useRouteError } from 'react-router-dom'
 import { ErrorPage } from './components/ErrorPage/ErrorPage'
 import { notFound } from './pages/not-found'
-import { ROUTES, routes } from './routeDefs'
+import { ROUTES, routes, TlaRouteHandle } from './routeDefs'
 import { TlaNotFoundError } from './tla/utils/notFoundError'
+import { captureRouteError, isRemoteSyncError } from './utils/routeErrors'
 
 const LoginRedirectPage = lazy(() => import('./components/LoginRedirectPage/LoginRedirectPage'))
 
@@ -27,32 +27,32 @@ export function createAppRouter({
 			ErrorBoundary={() => {
 				const error = useRouteError()
 				useEffect(() => {
-					captureException(error)
+					captureRouteError(error)
 				}, [error])
 
 				let header = 'Something went wrong'
 				let para1 =
 					'Please try refreshing the page. Still having trouble? Let us know at hello@tldraw.com.'
-				if (error instanceof TLRemoteSyncError) {
-					switch (error.reason) {
-						case TLSyncErrorCloseEventReason.NOT_FOUND: {
+				if (isRemoteSyncError(error)) {
+					switch (error.reason as TLSyncErrorCloseEventReason) {
+						case 'NOT_FOUND': {
 							header = 'Not found'
 							para1 = 'The file you are looking for does not exist.'
 							break
 						}
-						case TLSyncErrorCloseEventReason.NOT_AUTHENTICATED: {
+						case 'NOT_AUTHENTICATED': {
 							return (
 								<Suspense>
 									<LoginRedirectPage />
 								</Suspense>
 							)
 						}
-						case TLSyncErrorCloseEventReason.FORBIDDEN: {
+						case 'FORBIDDEN': {
 							header = 'Invite only'
 							para1 = `You don't have permission to view this room.`
 							break
 						}
-						case TLSyncErrorCloseEventReason.RATE_LIMITED: {
+						case 'RATE_LIMITED': {
 							header = 'Rate limited'
 							para1 = `Please slow down.`
 							break
@@ -74,10 +74,23 @@ export function createAppRouter({
 			}}
 		>
 			{includeDevRoutes && (
-				<Route path="/dev/reset-local-state" lazy={() => import('./pages/dev-reset-local-state')} />
+				<>
+					<Route
+						path="/dev/reset-local-state"
+						lazy={() => import('./pages/dev-reset-local-state')}
+					/>
+					<Route
+						path="/dev/browser-run-thumbnail"
+						lazy={() => import('./pages/dev-browser-run-thumbnail')}
+					/>
+				</>
 			)}
 			<Route lazy={() => import('./tla/providers/TlaRootProviders')}>
-				<Route path={ROUTES.tlaRoot} lazy={() => import('./tla/pages/local')} />
+				<Route
+					path={ROUTES.tlaRoot}
+					lazy={() => import('./tla/pages/local')}
+					handle={{ rendersWhileAppLoads: true } satisfies TlaRouteHandle}
+				/>
 				<Route element={<NoIndex />}>
 					<Route path={ROUTES.tlaNew} lazy={() => import('./pages/tla-new')} />
 					<Route path={ROUTES.tlaOptIn} loader={() => redirect(routes.tlaRoot())} />
@@ -87,20 +100,26 @@ export function createAppRouter({
 						lazy={() => import('./tla/pages/local-file-index')}
 					/>
 					{/* File view */}
-					<Route path={ROUTES.tlaFile} lazy={() => import('./tla/pages/file')} />
-					<Route path={ROUTES.tlaFileHistory} lazy={() => import('./tla/pages/file-history')} />
 					<Route
-						path={ROUTES.tlaFileHistorySnapshot}
-						lazy={() => import('./tla/pages/file-history-snapshot')}
+						path={ROUTES.tlaFile}
+						lazy={() => import('./tla/pages/file')}
+						handle={{ rendersWhileAppLoads: true } satisfies TlaRouteHandle}
 					/>
-					<Route
-						path={ROUTES.tlaFilePierreHistory}
-						lazy={() => import('./tla/pages/file-pierre-history')}
-					/>
-					<Route
-						path={ROUTES.tlaFilePierreHistorySnapshot}
-						lazy={() => import('./tla/pages/file-pierre-history-snapshot')}
-					/>
+					<Route lazy={() => import('./tla/providers/RequireTldrawStaff')}>
+						<Route path={ROUTES.tlaFileHistory} lazy={() => import('./tla/pages/file-history')} />
+						<Route
+							path={ROUTES.tlaFileHistorySnapshot}
+							lazy={() => import('./tla/pages/file-history-snapshot')}
+						/>
+						<Route
+							path={ROUTES.tlaLegacyRoomHistory}
+							lazy={() => import('./tla/pages/legacy-history')}
+						/>
+						<Route
+							path={ROUTES.tlaLegacyRoomHistorySnapshot}
+							lazy={() => import('./tla/pages/legacy-history-snapshot')}
+						/>
+					</Route>
 
 					<Route path={ROUTES.tlaPublish} lazy={() => import('./tla/pages/publish')} />
 					<Route path={ROUTES.tlaImport} lazy={() => import('./tla/pages/import')} />
@@ -121,19 +140,12 @@ export function createAppRouter({
 						path={ROUTES.tlaLegacySnapshot}
 						lazy={() => import('./tla/pages/legacy-snapshot')}
 					/>
-					{/* Legacy history */}
-					<Route
-						path={ROUTES.tlaLegacyRoomHistory}
-						lazy={() => import('./tla/pages/legacy-history')}
-					/>
-					{/* Legacy history snapshot */}
-					<Route
-						path={ROUTES.tlaLegacyRoomHistorySnapshot}
-						lazy={() => import('./tla/pages/legacy-history-snapshot')}
-					/>
 					{/* Views that require login */}
 					<Route lazy={() => import('./tla/providers/RequireSignedInUser')}></Route>
+					{/* Two explicit routes, not one optional segment: the Vercel rewrite derived from
+					    a trailing optional param drops the optionality and 404s bare /admin */}
 					<Route path="/admin" lazy={() => import('./pages/admin')} />
+					<Route path="/admin/:section" lazy={() => import('./pages/admin')} />
 				</Route>
 			</Route>
 			<Route path="/__debug-tail" lazy={() => import('./tla/pages/worker-debug-tail')} />

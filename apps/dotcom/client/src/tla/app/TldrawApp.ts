@@ -1,13 +1,13 @@
-import { QueryResultType, Zero } from '@rocicorp/zero'
+import { MutatorResultErrorDetails, QueryResultType, TypedView, Zero } from '@rocicorp/zero'
 import { captureException } from '@sentry/react'
 import {
 	AcceptInviteResponseBody,
 	CreateFilesResponseBody,
-	CreateSnapshotRequestBody,
 	FILE_PREFIX,
 	LOCAL_FILE_PREFIX,
 	MAX_NUMBER_OF_FILES,
 	ROOM_PREFIX,
+	Snapshot,
 	TlaFile,
 	WELCOME_CREATE_SOURCE,
 	TlaFileState,
@@ -19,7 +19,6 @@ import {
 	TlaUser,
 	UserPreferencesKeys,
 	ZErrorCode,
-	Z_PROTOCOL_VERSION,
 	ZeroContext,
 	can,
 	createMutators,
@@ -29,12 +28,10 @@ import {
 } from '@tldraw/dotcom-shared'
 import {
 	Result,
-	assert,
+	compact,
 	fetch,
-	getFromLocalStorage,
 	isEqual,
 	promiseWithResolve,
-	setInLocalStorage,
 	sleep,
 	sortByIndex,
 	sortByMaybeIndex,
@@ -47,7 +44,6 @@ import {
 	Atom,
 	Signal,
 	TLDocument,
-	TLSessionStateSnapshot,
 	TLUiToastsContextType,
 	TLUserPreferences,
 	assertExists,
@@ -64,48 +60,45 @@ import {
 } from 'tldraw'
 import { routes } from '../../routeDefs'
 import { trackEvent } from '../../utils/analytics'
-import { MULTIPLAYER_SERVER, ZERO_SERVER } from '../../utils/config'
+import { ZERO_SERVER } from '../../utils/config'
+import { getFirstLoadId, markFirstLoad } from '../../utils/firstLoad'
 import { multiplayerAssetStore } from '../../utils/multiplayerAssetStore'
 import { getScratchPersistenceKey } from '../../utils/scratch-persistence-key'
-import { TLAppUiContextType } from '../utils/app-ui-events'
+import { mergeCommentFeeds } from '../components/TlaSidebar/components/commentNotifications'
+import { TLAppUiContextType, TLAppUiEventSource } from '../utils/app-ui-events'
+import { copyTextToClipboard } from '../utils/copy'
 import { getDateFormat } from '../utils/dates'
-import { FeatureFlags } from '../utils/FeatureFlagPoller'
+import { FeatureFlags } from '../utils/featureFlags'
 import { createIntl, defineMessages, setupCreateIntl } from '../utils/i18n'
-import { updateLocalSessionState } from '../utils/local-session-state'
-import { Zero as ZeroPolyfill } from './zero-polyfill'
+import {
+	clearLastVisitedFile,
+	getLastVisitedFileId,
+	updateLocalSessionState,
+} from '../utils/local-session-state'
+import { ZeroLogBuffer, formatLogArg, redactTokens } from './ZeroLogBuffer'
 
 export const TLDR_FILE_ENDPOINT = `/api/app/tldr`
 export const PUBLISH_ENDPOINT = `/api/app/publish`
 
+const USER_PRELOAD_TIMEOUT_MS = 30_000
+
+export interface PreloadDiagnostics {
+	stage: string
+	initError: string | undefined
+	connection: string
+	connectionReason: string | undefined
+	visibilityState: DocumentVisibilityState
+	hiddenMs: number
+	online: boolean
+	msSinceNavigation: number
+	zeroLog: string[]
+}
+
+export function getPreloadDiagnostics(error: unknown): PreloadDiagnostics | undefined {
+	return (error as { diagnostics?: PreloadDiagnostics } | null)?.diagnostics
+}
+
 let appId = 0
-
-export function shouldUseProperZero(
-	flags: FeatureFlags,
-	email?: string | null
-): { value: boolean; reason: string } {
-	if (flags.zero_kill_switch?.enabled) {
-		return { value: false, reason: 'kill switch active' }
-	}
-	if (typeof navigator !== 'undefined' && navigator.webdriver) {
-		return { value: false, reason: 'automated testing' }
-	}
-	const localOverride = getFromLocalStorage('useProperZero')
-	if (localOverride !== null) {
-		return { value: localOverride === 'true', reason: 'localStorage override' }
-	}
-	if (email?.endsWith('@tldraw.com')) {
-		return { value: true, reason: '@tldraw.com email' }
-	}
-	const flagEnabled = flags.zero_enabled?.enabled ?? false
-	return { value: flagEnabled, reason: 'server feature flag' }
-}
-
-// @ts-expect-error — dev escape hatch, call window.zero() in console to toggle
-window.zero = () => {
-	const current = getFromLocalStorage('useProperZero') === 'true'
-	setInLocalStorage('useProperZero', String(!current))
-	location.reload()
-}
 
 /** When the user last opened the file (visit, else edit, else first visit), or undefined if never. */
 export function getFileVisitDate(state: TlaFileState | undefined): number | undefined {
@@ -118,6 +111,49 @@ export function getFileRecencyDate(
 	file: TlaFile | undefined
 ): number {
 	return getFileVisitDate(state) ?? file?.createdAt ?? 0
+}
+
+/** Milliseconds until a JWT's `exp`, or null if it can't be read. */
+function msUntilExpiry(token: string | undefined, now = Date.now()): number | null {
+	if (!token) return null
+	try {
+		const [, payload] = token.split('.')
+		if (!payload) return null
+		// base64url, which atob doesn't accept
+		const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+		if (typeof claims?.exp !== 'number') return null
+		return claims.exp * 1000 - now
+	} catch {
+		// a token we can't parse is still a usable token; fall back to the fixed cadence
+		return null
+	}
+}
+
+/** Fallback cadence for a token whose expiry we can't read. Under Clerk's 60s default this is
+ *  already too slow for a hidden tab — see {@link msUntilTokenRefresh}. */
+const FALLBACK_TOKEN_REFRESH_MS = 50_000
+/** Never busy-loop on a token that is expired or nearly so. */
+const MIN_TOKEN_REFRESH_MS = 5_000
+
+/**
+ * When to refresh the auth token, derived from the token's own expiry rather than a fixed cadence.
+ *
+ * This matters more than a normal token refresh because Zero hands the token to zero-cache, which
+ * reuses it for the transform and push fetches behind the connection. An expired token there
+ * doesn't fail one request, it invalidates the whole connection — which is what produced a steady
+ * ~2k `TransformFailed` and ~600 connection invalidations per hour in production.
+ *
+ * Refreshing at half the remaining life means a tick that runs late still has a whole half-life of
+ * slack. Reading the deadline off the token also means raising the session-token lifetime in the
+ * Clerk dashboard takes effect here with no code change — which is the part that actually fixes
+ * this. Browsers throttle timers in hidden tabs to roughly once a minute, so against Clerk's 60s
+ * default the token expires under a backgrounded tab no matter what cadence we ask for; no
+ * client-side schedule can beat that, only a longer-lived token can.
+ */
+export function msUntilTokenRefresh(token: string | undefined, now = Date.now()): number {
+	const remaining = msUntilExpiry(token, now)
+	if (remaining === null) return FALLBACK_TOKEN_REFRESH_MS
+	return Math.max(MIN_TOKEN_REFRESH_MS, remaining / 2)
 }
 
 export class TldrawApp {
@@ -138,27 +174,55 @@ export class TldrawApp {
 	private readonly workspaceMemberships$: Signal<
 		QueryResultType<typeof queries.workspaceMemberships>
 	>
+	/**
+	 * The comment feeds (one per reason for a notification — see `homeBoardComments` in
+	 * dotcom-shared), each empty until {@link startNotificationFeeds} subscribes it.
+	 */
+	private readonly homeBoardComments$: Atom<QueryResultType<typeof queries.homeBoardComments>>
+	private readonly threadStarterComments$: Atom<
+		QueryResultType<typeof queries.threadStarterComments>
+	>
+	private readonly threadParticipantComments$: Atom<
+		QueryResultType<typeof queries.threadParticipantComments>
+	>
+	private readonly mentionComments$: Atom<QueryResultType<typeof queries.mentionComments>>
+	/** The feeds merged, deduped by comment id (a comment can qualify for several reasons). */
+	private readonly comments$: Signal<QueryResultType<typeof queries.homeBoardComments>>
+	/** Like the comment feeds. */
+	private readonly reactions$: Atom<QueryResultType<typeof queries.reactions>>
+	/** The signed-in account's email, for the load report gate. */
+	readonly email: string | null
+	readonly isLoadRumEnabled: boolean
 
-	private readonly useProperZero: boolean
 	private readonly abortController = new AbortController()
 	readonly disposables: (() => void)[] = [() => this.abortController.abort(), () => this.z.close()]
 	private getToken: () => Promise<string | undefined>
 
 	changes: Map<Atom<any, unknown>, any> = new Map()
 	changesFlushed = null as null | ReturnType<typeof promiseWithResolve>
+	private readonly zeroLog = new ZeroLogBuffer()
 
 	// Track new room creation timestamps and sources
 	private newRoomCreationStartTimes: Map<string, { startTime: number; source: string }> = new Map()
 
 	private signalizeQuery<TReturn>(name: string, query: any): Signal<TReturn> {
 		// fail if closed?
-		const view = this.z.materialize(query) as unknown as {
-			data: TReturn
-			addListener(cb: (data: TReturn) => void): () => void
-			destroy(): void
-		}
+		const view = this.z.materialize(query) as unknown as TypedView<TReturn>
 		const val$ = atom(name, view.data, { isEqual })
-		view.addListener((res) => {
+		this.bindQuery(val$, view)
+		return val$
+	}
+
+	/** Feed a materialized Zero view into an atom for its lifetime, batched like every other signal. */
+	private bindQuery<TReturn>(val$: Atom<TReturn>, view: TypedView<TReturn>) {
+		let reportedError = false
+		view.addListener((res, resultType, error) => {
+			// a failed query just leaves its signal empty, which looks like no data rather than broken.
+			// Closing Zero fails every query still hydrating, which is teardown, not a failure
+			if (resultType === 'error' && !reportedError && !this.z.closed) {
+				reportedError = true
+				captureException(new Error(`Query failed: ${val$.name}`), { extra: { error } })
+			}
 			this.changes.set(val$, structuredClone(res))
 			if (!this.changesFlushed) {
 				this.changesFlushed = promiseWithResolve()
@@ -177,17 +241,24 @@ export class TldrawApp {
 		this.disposables.push(() => {
 			view.destroy()
 		})
-		return val$
 	}
 
 	toasts: TLUiToastsContextType | null = null
 	trackEvent: TLAppUiContextType
 	navigate: ReturnType<typeof useNavigate>
 
+	/**
+	 * Test-only hook (only set under Playwright, see the constructor) that fires the same
+	 * "client too old" callback Zero's `onUpdateNeeded` would call, so e2e can exercise the
+	 * reload-recovery UI without forcing a real schema/protocol mismatch against zero-cache.
+	 */
+	__test__triggerClientTooOld?: () => void
+
 	private constructor(
 		public readonly userId: string,
-		initialToken: string | undefined,
+		initialZeroToken: string | undefined,
 		getToken: () => Promise<string | undefined>,
+		getZeroToken: () => Promise<string | undefined>,
 		onClientTooOld: () => void,
 		trackEvent: TLAppUiContextType,
 		navigate: ReturnType<typeof useNavigate>,
@@ -197,130 +268,305 @@ export class TldrawApp {
 		this.navigate = navigate
 		this.trackEvent = trackEvent
 		this.getToken = getToken
-		const sessionId = uniqueId()
-		const { value: properZero, reason } = shouldUseProperZero(flags, email)
-		this.useProperZero = properZero
-		// eslint-disable-next-line no-console
-		console.log(`[Zero] Using ${properZero ? 'proper Zero' : 'ZeroPolyfill'} (${reason})`)
-		if (properZero) {
-			const z = new Zero<TlaSchema, TlaMutators, ZeroContext>({
-				auth: initialToken,
-				userID: userId,
-				schema: zeroSchema,
-				cacheURL: ZERO_SERVER,
-				mutators: createMutators(userId),
-				context: { userId } satisfies ZeroContext,
-				onUpdateNeeded(reason) {
-					console.error('update needed', reason)
-					onClientTooOld()
-				},
-				kvStore: window.navigator.webdriver ? 'mem' : 'idb',
-			})
-			this.z = z
-			const refreshToken = () =>
-				getToken().then((token) => {
-					if (token) {
-						z.connection.connect({ auth: token })
-						return true
-					}
-					return false
-				})
-			// Proactively refresh auth token before Clerk's 60s expiry.
-			// In Zero 0.26+, this sends an updateAuth message without reconnecting.
-			const TOKEN_REFRESH_INTERVAL = 50_000
-			const refreshInterval = setInterval(() => {
+		this.email = email ?? null
+		this.isLoadRumEnabled = flags.load_rum?.enabled ?? false
+		// Exposed as __test__triggerClientTooOld below so e2e can exercise the real recovery UI
+		// without a live schema/protocol mismatch against zero-cache.
+		if (window.navigator.webdriver) {
+			this.__test__triggerClientTooOld = () => onClientTooOld()
+		}
+		const z = new Zero<TlaSchema, TlaMutators, ZeroContext>({
+			auth: initialZeroToken,
+			userID: userId,
+			schema: zeroSchema,
+			cacheURL: ZERO_SERVER,
+			mutators: createMutators(userId),
+			context: { userId } satisfies ZeroContext,
+			logLevel: 'info',
+			logSink: this.zeroLog,
+			onUpdateNeeded(reason) {
+				console.error('update needed', reason)
+				onClientTooOld()
+			},
+			kvStore: window.navigator.webdriver ? 'mem' : 'idb',
+		})
+		this.z = z
+		// Refresh the token ahead of its own expiry and reschedule from whatever we get back, so the
+		// cadence follows the token's lifetime rather than a hardcoded guess at it. In Zero 0.26+
+		// this sends an updateAuth message without reconnecting.
+		let refreshTimeout: ReturnType<typeof setTimeout> | undefined
+		const scheduleRefresh = (token: string | undefined) => {
+			clearTimeout(refreshTimeout)
+			refreshTimeout = setTimeout(() => {
 				refreshToken().catch((err) => {
 					console.error('Failed to proactively refresh auth token:', err)
 				})
-			}, TOKEN_REFRESH_INTERVAL)
-			this.disposables.push(() => clearInterval(refreshInterval))
-			// Set up token refresh on auth errors with backoff
-			let authRetryCount = 0
-			const MAX_AUTH_RETRIES = 5
-			const unsubscribe = z.connection.state.subscribe((state) => {
-				if (state.name === 'needs-auth') {
-					if (authRetryCount >= MAX_AUTH_RETRIES) {
-						console.error(`Auth retry limit reached (${MAX_AUTH_RETRIES}), giving up`)
-						captureException(new Error('Auth retry limit reached'))
-						return
-					}
-					const delay = Math.min(1000 * Math.pow(2, authRetryCount), 30_000)
-					authRetryCount++
-					setTimeout(() => {
-						refreshToken()
-							.then((didRefresh) => {
-								if (didRefresh) authRetryCount = 0
-							})
-							.catch((err) => {
-								console.error('Failed to refresh auth token:', err)
-								captureException(err)
-							})
-					}, delay)
-				}
-			})
-			this.disposables.push(unsubscribe)
-		} else {
-			this.z = new ZeroPolyfill({
-				userId,
-				getUri: async () => {
-					const params = new URLSearchParams({
-						sessionId,
-						protocolVersion: String(Z_PROTOCOL_VERSION),
-					})
-					const token = await getToken()
-					params.set('accessToken', token || 'no-token-found')
-					return `${MULTIPLAYER_SERVER}/app/${userId}/connect?${params}`
-				},
-				onMutationRejected: this.showMutationRejectionToast,
-				onClientTooOld: () => onClientTooOld(),
-				trackEvent,
-			}) as unknown as Zero<TlaSchema, TlaMutators, ZeroContext>
+			}, msUntilTokenRefresh(token))
 		}
+		// Reschedule on every outcome — a rejected getZeroToken() or a throwing connect() must not
+		// kill the refresh chain, so scheduling happens before connect and in the reject path.
+		const refreshToken = () =>
+			getZeroToken()
+				.catch((err) => {
+					scheduleRefresh(undefined)
+					throw err
+				})
+				.then((token) => {
+					scheduleRefresh(token)
+					if (token) {
+						z.connection.connect({ auth: token })
+					}
+					return !!token
+				})
+		scheduleRefresh(initialZeroToken)
+		this.disposables.push(() => clearTimeout(refreshTimeout))
+		// Timers in a hidden tab are throttled to about once a minute, so the refresh has to sit well
+		// inside that budget — see the `zero` JWT template's lifetime. Refreshing on the way back
+		// covers the cases no schedule can (a frozen tab, a slept laptop), where the token goes stale
+		// while nothing is running at all.
+		const onVisibilityChange = () => {
+			if (document.visibilityState !== 'visible') return
+			refreshToken().catch((err) => {
+				console.error('Failed to refresh auth token on focus:', err)
+			})
+		}
+		document.addEventListener('visibilitychange', onVisibilityChange)
+		this.disposables.push(() =>
+			document.removeEventListener('visibilitychange', onVisibilityChange)
+		)
+		// Set up token refresh on auth errors with backoff
+		let authRetryCount = 0
+		const MAX_AUTH_RETRIES = 5
+		const unsubscribe = z.connection.state.subscribe((state) => {
+			if (state.name === 'needs-auth') {
+				if (authRetryCount >= MAX_AUTH_RETRIES) {
+					console.error(`Auth retry limit reached (${MAX_AUTH_RETRIES}), giving up`)
+					captureException(new Error('Auth retry limit reached'))
+					return
+				}
+				const delay = Math.min(1000 * Math.pow(2, authRetryCount), 30_000)
+				authRetryCount++
+				setTimeout(() => {
+					refreshToken()
+						.then((didRefresh) => {
+							if (didRefresh) authRetryCount = 0
+						})
+						.catch((err) => {
+							console.error('Failed to refresh auth token:', err)
+							captureException(err)
+						})
+				}, delay)
+			}
+		})
+		this.disposables.push(unsubscribe)
 
-		this.user$ = this.signalizeQuery('user signal', this.userQuery())
-		this.fileStates$ = this.signalizeQuery('file states signal', this.fileStateQuery())
+		this.user$ = this.signalizeQuery('user signal', queries.user())
+		this.fileStates$ = this.signalizeQuery('file states signal', queries.fileStates())
 		this.workspaceMemberships$ = this.signalizeQuery(
 			'workspace memberships signal',
-			this.workspaceMembershipsQuery()
+			queries.workspaceMemberships()
+		)
+		this.homeBoardComments$ = atom('home board comments signal', [], { isEqual })
+		this.threadStarterComments$ = atom('thread starter comments signal', [], { isEqual })
+		this.threadParticipantComments$ = atom('thread participant comments signal', [], { isEqual })
+		this.mentionComments$ = atom('mention comments signal', [], { isEqual })
+		this.comments$ = computed('comments signal', () =>
+			mergeCommentFeeds<QueryResultType<typeof queries.homeBoardComments>[number]>(
+				this.homeBoardComments$.get(),
+				this.threadStarterComments$.get(),
+				this.threadParticipantComments$.get(),
+				this.mentionComments$.get()
+			)
+		)
+		this.reactions$ = atom('reactions signal', [], { isEqual })
+	}
+
+	/**
+	 * Subscribe the notifications feeds. Called once {@link preload} has resolved rather than from
+	 * the constructor: nothing awaits these, but a query the view-syncer is hydrating still
+	 * delays the bootstrap queries the app does wait on (tldraw-internal#2032).
+	 */
+	startNotificationFeeds() {
+		this.bindQuery(
+			this.homeBoardComments$,
+			this.materializeQuery<QueryResultType<typeof queries.homeBoardComments>>(
+				queries.homeBoardComments()
+			)
+		)
+		this.bindQuery(
+			this.threadStarterComments$,
+			this.materializeQuery<QueryResultType<typeof queries.threadStarterComments>>(
+				queries.threadStarterComments()
+			)
+		)
+		this.bindQuery(
+			this.threadParticipantComments$,
+			this.materializeQuery<QueryResultType<typeof queries.threadParticipantComments>>(
+				queries.threadParticipantComments()
+			)
+		)
+		this.bindQuery(
+			this.mentionComments$,
+			this.materializeQuery<QueryResultType<typeof queries.mentionComments>>(
+				queries.mentionComments()
+			)
+		)
+		this.bindQuery(
+			this.reactions$,
+			this.materializeQuery<QueryResultType<typeof queries.reactions>>(queries.reactions())
 		)
 	}
 
-	private userQuery() {
-		return queries.user()
+	/**
+	 * Recent comments across the user's files, for the notifications feed (bounded per feed,
+	 * cross-file, unordered). Empty until {@link startNotificationFeeds}.
+	 */
+	getComments(): QueryResultType<typeof queries.homeBoardComments> {
+		return this.comments$.get()
 	}
 
-	private fileStateQuery() {
-		return queries.fileStates()
+	/**
+	 * Recent reactions to the user's comments across their files, for the notifications feed
+	 * (bounded, cross-file). Empty until {@link startNotificationFeeds}.
+	 */
+	getReactions(): QueryResultType<typeof queries.reactions> {
+		return this.reactions$.get()
 	}
 
-	private workspaceMembershipsQuery() {
-		return queries.workspaceMemberships()
+	/**
+	 * Materialize an ad-hoc Zero query into a live view the caller owns and must `destroy()`. For
+	 * parameterized, component-scoped queries (e.g. one file's comments) that shouldn't be
+	 * app-lifetime signals like {@link fileStates$}.
+	 */
+	materializeQuery<TReturn>(query: unknown) {
+		return this.z.materialize(query as any) as unknown as TypedView<TReturn>
 	}
 
-	async preload() {
-		if (this.useProperZero) {
-			// Ensure user exists in DB before Zero can query
-			const token = await this.getToken()
-			if (!token) {
-				throw new Error('No auth token available for init')
-			} else {
-				const res = await fetch(`/api/app/${this.userId}/init`, {
-					method: 'POST',
-					headers: { Authorization: `Bearer ${token}` },
+	/**
+	 * Creates the user row + home workspace. Throws if the request was never sent; once sent, a
+	 * failure is returned instead, since the row may still have committed.
+	 */
+	private async initUser(): Promise<Error | undefined> {
+		const token = await this.getToken()
+		if (!token) throw new Error('No auth token available for init')
+		try {
+			const res = await fetch(`/api/app/${this.userId}/init`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${token}`, 'x-tldraw-load-id': getFirstLoadId() },
+			})
+			return res.ok ? undefined : new Error(`Init failed: ${res.status}`)
+		} catch (e) {
+			// Browsers word network errors differently and Sentry groups on the message.
+			return new Error('Init request failed', { cause: e })
+		}
+	}
+
+	async preload(signal?: AbortSignal) {
+		// Zero's query can itself stall, so the deadline must cover it and every stage after it.
+		// The stage is in the error so Sentry can tell a slow Zero sync from a row that never arrived.
+		let stage: 'zero query' | 'state flush' | 'user init' | 'user record' | 'workspace data' =
+			'zero query'
+		const failed = promiseWithResolve<never>()
+		let stopWaiting: (() => void) | undefined
+		let initError: Error | undefined
+		let hiddenMs = 0
+		const fail = () => {
+			const error =
+				(stage === 'user record' && initError) || new Error(`Timed out waiting for the ${stage}`)
+			try {
+				const connection = this.z.connection.state.current
+				// Sentry's ExtraErrorData integration copies this onto the event.
+				Object.assign(error, {
+					diagnostics: {
+						stage,
+						initError: initError && formatLogArg(initError),
+						connection: connection.name,
+						connectionReason:
+							'reason' in connection ? redactTokens(formatLogArg(connection.reason)) : undefined,
+						visibilityState: document.visibilityState,
+						hiddenMs,
+						online: navigator.onLine,
+						msSinceNavigation: Math.round(performance.now()),
+						zeroLog: this.zeroLog.recent(),
+					} satisfies PreloadDiagnostics,
 				})
-				if (!res.ok) console.error(`Init failed: ${res.status}`)
+			} finally {
+				failed.reject(error)
 			}
 		}
-		await this.z.preload(this.userQuery()).complete
-		await this.changesFlushed
-		await new Promise((resolve) => {
-			let unlisten = () => {}
-			unlisten = react('wait for user', () => this.user$.get() && resolve(unlisten()))
-		})
-		await Promise.all([
-			this.z.preload(this.fileStateQuery()).complete,
-			this.z.preload(this.workspaceMembershipsQuery()).complete,
-		])
+		// Zero built in a hidden tab waits for visibility before connecting, so a restored or
+		// cmd-clicked tab would burn the deadline before it gets a chance. Only count visible time,
+		// and start over on return: Zero drops the socket after five minutes hidden, so whatever was
+		// left of the budget would cover a cold reconnect only by luck.
+		let timeout: ReturnType<typeof setTimeout> | undefined
+		let hiddenSince = 0
+		const resumeDeadline = () => {
+			if (timeout !== undefined) return
+			if (hiddenSince) {
+				hiddenMs += Date.now() - hiddenSince
+				hiddenSince = 0
+			}
+			timeout = setTimeout(fail, USER_PRELOAD_TIMEOUT_MS)
+		}
+		const pauseDeadline = () => {
+			if (timeout === undefined) return
+			clearTimeout(timeout)
+			timeout = undefined
+			hiddenSince = Date.now()
+		}
+		const onVisibilityChange = () =>
+			document.visibilityState === 'visible' ? resumeDeadline() : pauseDeadline()
+		document.addEventListener('visibilitychange', onVisibilityChange)
+		if (document.visibilityState === 'visible') resumeDeadline()
+		else hiddenSince = Date.now()
+		// A hidden tab can sit here indefinitely, so the caller needs a way to settle this and let
+		// create() dispose the half-built app when it gives up on it.
+		const onAbort = () => failed.reject(new DOMException('Bootstrap cancelled', 'AbortError'))
+		signal?.addEventListener('abort', onAbort)
+		if (signal?.aborted) onAbort()
+		try {
+			await Promise.race([this.z.preload(queries.user()).complete, failed])
+			stage = 'state flush'
+			await Promise.race([this.changesFlushed, failed])
+			const userLoaded = promiseWithResolve<void>()
+			stopWaiting = react('wait for user', () => {
+				if (this.user$.get()) userLoaded.resolve()
+			})
+			// Only a user Zero has confirmed missing needs init, so returning users never wait on the
+			// worker's Postgres. The row wins over a slow init (another tab created it, a lost ack), and
+			// a sent init that failed may still have committed, so its error only surfaces if the
+			// deadline runs out.
+			if (!this.user$.get()) {
+				stage = 'user init'
+				await Promise.race([
+					this.initUser().then((error) => {
+						initError = error
+						// After the row wins, a late mark would skew the step deltas around it.
+						if (stage === 'user init') markFirstLoad('init-done')
+					}),
+					userLoaded,
+					failed,
+				])
+			}
+			stage = 'user record'
+			await Promise.race([userLoaded, failed])
+			if (initError) console.warn('[AppState] User row arrived after init failed:', initError)
+			markFirstLoad('zero-user-synced')
+			stage = 'workspace data'
+			await Promise.race([
+				Promise.all([
+					this.z.preload(queries.fileStates()).complete,
+					this.z.preload(queries.workspaceMemberships()).complete,
+				]),
+				failed,
+			])
+			markFirstLoad('zero-preloaded')
+		} finally {
+			signal?.removeEventListener('abort', onAbort)
+			document.removeEventListener('visibilitychange', onVisibilityChange)
+			clearTimeout(timeout)
+			stopWaiting?.()
+		}
 	}
 
 	messages = defineMessages({
@@ -344,6 +590,9 @@ export class TldrawApp {
 		},
 		unknown_error: {
 			defaultMessage: 'An unexpected error occurred.',
+		},
+		offline_error: {
+			defaultMessage: 'You appear to be offline. Check your connection and try again.',
 		},
 		forbidden: {
 			defaultMessage: 'You do not have the necessary permissions to perform this action.',
@@ -384,8 +633,10 @@ export class TldrawApp {
 		return msg
 	}
 
-	showMutationRejectionToast = throttle((errorCode: ZErrorCode) => {
-		const descriptor = this.getMessage(errorCode)
+	// Zero-level errors (socket down, client closed) carry prose, not a ZErrorCode.
+	showMutationRejectionToast = throttle((error: MutatorResultErrorDetails['error']) => {
+		const code = error.type === 'zero' ? ZErrorCode.offline_error : (error.message as ZErrorCode)
+		const descriptor = this.getMessage(code)
 		this.toasts?.addToast({
 			title: this.getIntl().formatMessage(this.messages.mutation_error_toast_title),
 			description: this.getIntl().formatMessage(descriptor),
@@ -397,10 +648,28 @@ export class TldrawApp {
 		// this.store.dispose()
 	}
 
+	/**
+	 * Drops this user's Zero replica from IndexedDB. Zero keeps synced data on disk across sign-out
+	 * so the next sign-in is fast, which leaks the previous user's files on shared machines. Safe to
+	 * call after dispose(): delete() closes the instance first, and close() is idempotent.
+	 */
+	async deleteLocalData() {
+		try {
+			const { errors } = await this.z.delete()
+			for (const error of errors) {
+				captureException(error)
+			}
+		} catch (error) {
+			captureException(error)
+		}
+	}
+
 	getUser() {
 		return assertExists(this.user$.get(), 'no user')
 	}
 
+	// Keep these helpers even when no per-user flags are active; future rollouts need
+	// reactive access to the flags stored on the user record.
 	@computed({ isEqual })
 	getUserFlags(): Set<TlaFlags> {
 		const user = this.getUser()
@@ -420,13 +689,22 @@ export class TldrawApp {
 		return this.userId
 	}
 
+	/**
+	 * A membership whose group row is missing is stale, not real. The comment feeds' access gate can
+	 * keep the caller's group_user row in the client store after they leave a workspace (Zero 1.9's
+	 * union fan-in drops the remove, rocicorp/mono#6636), while the group row, synced only by this
+	 * query, is gone. Counting it would block rejoining by invite and pass client-side role checks.
+	 */
 	@computed({ isEqual })
 	getWorkspaceMemberships() {
-		return this.workspaceMemberships$.get().slice(0).sort(sortByIndex)
+		return this.workspaceMemberships$
+			.get()
+			.filter((g) => g.group)
+			.sort(sortByIndex)
 	}
 
 	getWorkspaceMembership(workspaceId: string) {
-		return this.workspaceMemberships$.get().find((g) => g.groupId === workspaceId)
+		return this.getWorkspaceMemberships().find((g) => g.groupId === workspaceId)
 	}
 
 	getWorkspaceFilesSorted(workspaceId: string) {
@@ -466,8 +744,7 @@ export class TldrawApp {
 		pinned.sort(sortByMaybeIndex)
 
 		for (const file of unpinned) {
-			const existing = retainedOrdering?.find((f) => f.fileId === file.fileId)
-			if (existing) continue
+			if (retainedOrdering.some((f) => f.fileId === file.fileId)) continue
 
 			// For new files, use current updatedAt
 			const state = this.getFileState(file.fileId)
@@ -488,11 +765,6 @@ export class TldrawApp {
 		return pinned
 			.map((f) => ({ fileId: f.fileId, isPinned: f.index !== null, date: f.file.updatedAt }))
 			.concat(nextOrdering.map((f) => ({ fileId: f.fileId, isPinned: false, date: f.date })))
-	}
-
-	// Clear workspace file ordering to refresh on expand (like recent files on page reload)
-	clearWorkspaceFileOrdering(workspaceId: string) {
-		this.lastWorkspaceFileOrderings.delete(workspaceId)
 	}
 
 	tlUser = createTLCurrentUser({
@@ -520,12 +792,7 @@ export class TldrawApp {
 	})
 
 	getUserOwnFiles() {
-		const fileStates = this.getUserFileStates()
-		const files: TlaFile[] = []
-		fileStates.forEach((f) => {
-			if (f.file) files.push(f.file)
-		})
-		return files
+		return compact(this.getUserFileStates().map((f) => f.file))
 	}
 
 	getUserFileStates() {
@@ -575,7 +842,7 @@ export class TldrawApp {
 		return mostRecent?.fileId ?? scopedFiles[0]?.fileId ?? null
 	}
 
-	private canCreateNewFile(workspaceId: string) {
+	private canCreateNewFile(workspaceId: string, count = 1) {
 		// Count only files the workspace actually owns — not guest files (shared files the
 		// user opened) or mislinked rows that getWorkspaceFilesSorted hides. Counting those
 		// would let the limit fire on files the user can neither see nor remove. createFile
@@ -586,7 +853,7 @@ export class TldrawApp {
 		const nonDeletedCount = membership.groupFiles.filter(
 			(gf) => gf.file && !gf.file.isDeleted && gf.file.owningGroupId === workspaceId
 		).length
-		return nonDeletedCount < this.config.maxNumberOfFiles
+		return nonDeletedCount + count <= this.config.maxNumberOfFiles
 	}
 
 	private showMaxFilesToast() {
@@ -666,11 +933,18 @@ export class TldrawApp {
 		}
 
 		this.storeNewRoomCreationTracking(fileId, createSource, Date.now())
-		try {
-			await this.z.mutate.createFile({ fileId, workspaceId, name, createSource, time: Date.now() })
-				.client
-		} catch (e) {
-			this.showMutationRejectionToast((e as Error).message as ZErrorCode)
+		// Zero mutator promises never reject — failures resolve with {type: 'error'} — so a
+		// try/catch here would be dead code and a failed create would navigate to a file that
+		// rolls back.
+		const res = await this.z.mutate.createFile({
+			fileId,
+			workspaceId,
+			name,
+			createSource,
+			time: Date.now(),
+		}).client
+		if (res.type === 'error') {
+			this.showMutationRejectionToast(res.error)
 			return Result.err('mutation rejected')
 		}
 
@@ -737,7 +1011,6 @@ export class TldrawApp {
 			// possibly a published file
 			return ''
 		}
-		assert(typeof file !== 'string', 'ok')
 
 		if (typeof file.name === 'undefined') {
 			captureException(new Error('file name is undefined somehow: ' + JSON.stringify(file)))
@@ -755,8 +1028,8 @@ export class TldrawApp {
 		return
 	}
 
-	async slurpFile() {
-		return await this.createFile({
+	slurpFile() {
+		return this.createFile({
 			createSource: `${LOCAL_FILE_PREFIX}/${getScratchPersistenceKey()}`,
 		})
 	}
@@ -771,12 +1044,6 @@ export class TldrawApp {
 		})
 	}
 
-	/**
-	 * Publish a file or re-publish changes.
-	 *
-	 * @param fileId - The file id to unpublish.
-	 * @returns A result indicating success or failure.
-	 */
 	publishFile(fileId: string) {
 		const file = this.getFile(fileId)
 		if (!file) throw Error(`No file with that id`)
@@ -795,17 +1062,16 @@ export class TldrawApp {
 
 	getFile(fileId?: string): TlaFile | null {
 		if (!fileId) return null
-		return (
-			this.getWorkspaceMemberships()
-				.find((g) => g.groupFiles.some((gf) => gf.fileId === fileId))
-				?.groupFiles.find((gf) => gf.fileId === fileId)?.file ?? null
-		)
+		for (const membership of this.getWorkspaceMemberships()) {
+			const groupFile = membership.groupFiles.find((gf) => gf.fileId === fileId)
+			if (groupFile) return groupFile.file ?? null
+		}
+		return null
 	}
 
 	canUpdateFile(fileId: string): boolean {
 		const file = this.getFile(fileId)
 		if (!file) return false
-		if (file.ownerId) return file.ownerId === this.userId
 		if (file.owningGroupId) {
 			const role = this.getWorkspaceMembership(file.owningGroupId)?.role
 			return can(role, 'accessFiles')
@@ -817,12 +1083,6 @@ export class TldrawApp {
 		return assertExists(this.getFile(fileId), 'no file with id ' + fileId)
 	}
 
-	/**
-	 * Unpublish a file.
-	 *
-	 * @param fileId - The file id to unpublish.
-	 * @returns A result indicating success or failure.
-	 */
 	unpublishFile(fileId: string) {
 		const file = this.requireFile(fileId)
 		if (!this.canUpdateFile(fileId)) throw Error('user cannot edit that file')
@@ -837,11 +1097,23 @@ export class TldrawApp {
 	}
 
 	/**
-	 * Remove a user's file states for a file and delete the file if the user is the owner of the file.
+	 * Remove the user's file state and the workspace's link to a file, deleting the file itself only
+	 * if that workspace is the one that owns it.
 	 */
-	async deleteOrForgetFile(fileId: string, workspaceId: string = this.getHomeWorkspaceId()) {
-		// Optimistic update, remove file and file states
-		await this.z.mutate.removeFileFromWorkspace({ fileId, workspaceId }).client
+	async deleteOrForgetFile(
+		fileId: string,
+		workspaceId: string = this.getHomeWorkspaceId()
+	): Promise<boolean> {
+		// Optimistic update, remove file and file states. Zero mutator promises never reject —
+		// failures resolve with {type: 'error'} — so the result has to be checked, not caught.
+		const res = await this.z.mutate.removeFileFromWorkspace({ fileId, workspaceId }).client
+		if (res.type === 'error') {
+			this.showMutationRejectionToast(res.error)
+			return false
+		}
+		// Otherwise the next `/` load would walk straight back into the room and re-add the file.
+		if (getLastVisitedFileId(this.userId) === fileId) clearLastVisitedFile()
+		return true
 	}
 
 	setFileSharedLinkType(fileId: string, sharedLinkType: TlaFile['sharedLinkType'] | 'no-access') {
@@ -874,10 +1146,25 @@ export class TldrawApp {
 		return this.getUserFileStates().find((f) => f.fileId === fileId)
 	}
 
+	/** Same test getMostRecentFileId applies: a visit whose file is gone (moved, revoked, deleted) doesn't count. */
+	isFileVisitable(fileId: string) {
+		const file = this.getFileState(fileId)?.file
+		return !!file && !file.isDeleted
+	}
+
 	updateFileState(fileId: string, partial: Omit<TlaFileStatePartial, 'fileId' | 'userId'>) {
 		const file = this.getFile(fileId)
 		if (!file || file.isDeleted) return
 		this.z.mutate.file_state.update({ ...partial, fileId, userId: this.userId })
+	}
+
+	markCommentRead(commentId: string) {
+		this.z.mutate.comment.markRead({ commentId, readAt: Date.now() })
+	}
+
+	markCommentsRead(commentIds: string[]) {
+		if (commentIds.length === 0) return
+		this.z.mutate.comment.markManyRead({ commentIds, readAt: Date.now() })
 	}
 
 	updateFile(fileId: string, partial: Partial<TlaFile>) {
@@ -888,29 +1175,19 @@ export class TldrawApp {
 		this.z.mutate.onEnterFile({ fileId, time: Date.now() })
 	}
 
-	onFileEdit(fileId: string) {
-		this.updateFileState(fileId, { lastEditAt: Date.now() })
-	}
-
-	onFileSessionStateUpdate(fileId: string, sessionState: TLSessionStateSnapshot) {
-		this.updateFileState(fileId, {
-			lastSessionState: JSON.stringify(sessionState),
-			lastVisitAt: Date.now(),
-		})
-	}
-
-	onFileExit(fileId: string) {
-		this.updateFileState(fileId, { lastVisitAt: Date.now() })
-	}
-
 	static async create(opts: {
 		userId: string
 		email?: string | null
 		flags: FeatureFlags
+		/** Clerk session token, for this app's own REST endpoints. */
 		getToken(): Promise<string | undefined>
+		/** Token for the Zero connection — see {@link getZeroAuth} on the worker for why it differs. */
+		getZeroToken(): Promise<string | undefined>
 		onClientTooOld(): void
 		trackEvent: TLAppUiContextType
 		navigate: ReturnType<typeof useNavigate>
+		/** Settles a bootstrap the caller no longer wants, e.g. a tab that never became visible. */
+		signal?: AbortSignal
 	}) {
 		// This is an issue: we may have a user record but not in the store.
 		// Could be just old accounts since before the server had a version
@@ -918,11 +1195,12 @@ export class TldrawApp {
 
 		const { id: _id, name: _name, color, ...restOfPreferences } = getUserPreferences()
 		// Get initial token before creating Zero instance
-		const initialToken = await opts.getToken()
+		const initialZeroToken = await opts.getZeroToken()
 		const app = new TldrawApp(
 			opts.userId,
-			initialToken,
+			initialZeroToken,
 			opts.getToken,
+			opts.getZeroToken,
 			opts.onClientTooOld,
 			opts.trackEvent,
 			opts.navigate,
@@ -931,7 +1209,15 @@ export class TldrawApp {
 		)
 		// @ts-expect-error
 		window.app = app
-		await app.preload()
+		try {
+			await app.preload(opts.signal)
+			app.startNotificationFeeds()
+		} catch (e) {
+			// Don't leave the half-built app's Zero connection and timers running behind the
+			// error page the caller shows for this.
+			app.dispose()
+			throw e
+		}
 		const user = app.getUser()
 		if (user.color === '___INIT___') {
 			app.updateUser({
@@ -971,13 +1257,28 @@ export class TldrawApp {
 
 	async uploadTldrFiles(
 		files: File[],
-		onFirstFileUploaded?: (fileId: string) => void,
-		workspaceId?: string,
-		onUploadError?: () => void
-	) {
+		opts: {
+			/** Where the import started; reported as the `create-file` source for each file. */
+			source: TLAppUiEventSource
+			onFirstFileUploaded?(fileId: string): void
+			workspaceId?: string
+			onUploadError?(): void
+		}
+	): Promise<void> {
+		let { onFirstFileUploaded } = opts
+		const { source, workspaceId, onUploadError } = opts
 		const totalFiles = files.length
 		let uploadedFiles = 0
 		if (totalFiles === 0) return
+		// createFile runs this check too, but only after the snapshot and its assets are already
+		// uploaded — which would orphan a room in R2 and stack a generic error on the limit toast.
+		// Check the whole batch: with one slot left, a two-file import would otherwise create the
+		// first file and then upload the second before createFile rejects it.
+		if (!this.canCreateNewFile(workspaceId ?? this.getHomeWorkspaceId(), totalFiles)) {
+			this.showMaxFilesToast()
+			onUploadError?.()
+			return
+		}
 
 		// this is only approx since we upload the files in pieces and they are base64 encoded
 		// in the json blob, so this will usually be a big overestimate. But that's fine because
@@ -1053,6 +1354,8 @@ export class TldrawApp {
 				}),
 			})
 
+			this.trackEvent('create-file', { source })
+
 			if (onFirstFileUploaded) {
 				onFirstFileUploaded(res.value.fileId)
 				onFirstFileUploaded = undefined
@@ -1125,7 +1428,7 @@ export class TldrawApp {
 				{
 					schema: snapshot.schema,
 					snapshot: snapshot.store,
-				} satisfies CreateSnapshotRequestBody,
+				} satisfies Snapshot,
 			],
 		})
 
@@ -1139,10 +1442,14 @@ export class TldrawApp {
 			throw Error(response.message)
 		}
 		const fileId = response.slugs[0]
+		// `||` not `??`: File.name is never nullish, so the document-name fallback was unreachable
+		// and a file called `.tldr` would reach createFile with an empty name (bad_request).
 		const name =
-			file.name?.replace(/\.tldr$/, '') ??
-			Object.values(snapshot.store).find((d): d is TLDocument => d.typeName === 'document')?.name ??
-			''
+			file.name.replace(/\.tldr$/, '').trim() ||
+			Object.values(snapshot.store)
+				.find((d): d is TLDocument => d.typeName === 'document')
+				?.name?.trim() ||
+			undefined
 
 		return this.createFile({ fileId, name, workspaceId })
 	}
@@ -1163,8 +1470,7 @@ export class TldrawApp {
 		const group = this.getWorkspaceMembership(workspaceId)?.group
 		if (!group?.inviteSecret) return false
 
-		const inviteText = `${location.origin}/invite/${group.inviteSecret}`
-		navigator.clipboard.writeText(inviteText)
+		copyTextToClipboard(routes.tlaInvite(group.inviteSecret, { asUrl: true }))
 
 		if (showToast) {
 			this.toasts?.addToast({
@@ -1182,13 +1488,15 @@ export class TldrawApp {
 			method: 'POST',
 		})
 
-		const payload = (await response.json()) as AcceptInviteResponseBody
+		// A gateway error page or the router's own 401 body isn't an AcceptInviteResponseBody;
+		// parsing it first would throw past the toast below.
+		const payload = (await response.json().catch(() => null)) as AcceptInviteResponseBody | null
 
-		if (payload.error || !response.ok) {
+		if (!payload || payload.error || !response.ok) {
 			this.toasts?.addToast({
 				severity: 'error',
 				title: 'Error accepting invite',
-				description: payload.message,
+				description: payload?.message ?? 'Please try again.',
 			})
 			this.navigate(routes.tlaRoot())
 			return

@@ -65,14 +65,22 @@ export class Editor {
 	@step
 	async rename(newName: string) {
 		await this.fileName.click()
-		await this.page.getByRole('textbox').fill(newName)
+		await this.page.getByTestId('tla-file-name-input').fill(newName)
 		await this.page.keyboard.press('Enter')
-		await this.sidebar.mutationResolution()
 	}
 
 	@step
 	async openPageMenu() {
 		await this.pageMenu.click()
+	}
+
+	@step
+	async copyFileLinkFromFileHeader() {
+		await this.openPageMenu()
+		await this.page.getByRole('menuitem', { name: 'File' }).click()
+		await this.sidebar.clearClipboard()
+		await this.page.getByRole('menuitem', { name: 'Copy link' }).click()
+		return await this.sidebar.readClipboardUrl(/^\/f\//)
 	}
 
 	@step
