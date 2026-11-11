@@ -10,8 +10,8 @@ name: Post release crew to Discord
 # (`3` = Wednesday) in the cron line.
 
 on:
-  schedule:
-    - cron: '7 7 * * 3' # Wednesday 07:07 UTC
+  # schedule:
+  #   - cron: '7 7 * * 3' # Wednesday 07:07 UTC
   workflow_dispatch: # allow manual runs
 
 concurrency:
