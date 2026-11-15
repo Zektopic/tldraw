@@ -21,9 +21,9 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/ext-apps": "^1.0.0",
-		"@modelcontextprotocol/sdk": "1.29.0",
+		"@modelcontextprotocol/sdk": "^1.32.2",
 		"agents": "^0.19.0",
-		"zod": "^4.1.8"
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260302.0",
@@ -36,7 +36,7 @@
 		"tldraw": "workspace:*",
 		"tsx": "^4.19.2",
 		"typescript": "^7.0.2",
-		"vite": "^8.0.16",
+		"vite": "^8.3.6",
 		"vite-plugin-singlefile": "^2.3.2",
 		"vitest": "^5.0.0",
 		"wrangler": "^4.148.0"

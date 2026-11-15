@@ -70,8 +70,8 @@
 		"google-auth-library": "^9.15.1",
 		"gray-matter": "^4.0.3",
 		"instantsearch.js": "^4.77.1",
-		"js-cookie": "^3.0.5",
-		"next": "^16.3.0",
+		"js-cookie": "^3.0.8",
+		"next": "^16.4.5",
 		"next-mdx-remote-client": "^1.1.2",
 		"next-themes": "^0.3.0",
 		"query-string": "^9.1.1",
@@ -103,14 +103,14 @@
 		"mdast-util-mdx": "^3.0.0",
 		"oxfmt": "^0.41.0",
 		"patch-package": "^8.0.0",
-		"postcss": "^8.5.1",
+		"postcss": "^8.5.32",
 		"postinstall-postinstall": "^2.1.0",
-		"sharp": "^0.35.3",
+		"sharp": "^0.35.5",
 		"tailwindcss": "^3.4.17",
-		"tar": "^7.5.11",
+		"tar": "^7.5.22",
 		"tsx": "^4.19.2",
 		"typescript": "^7.0.2",
 		"vitest": "^5.0.0",
-		"ws": "^8.18.0"
+		"ws": "^8.22.1"
 	}
 }

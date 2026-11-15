@@ -34,14 +34,14 @@
 		"@tldraw/utils": "workspace:*",
 		"@tldraw/worker-shared": "workspace:*",
 		"itty-router": "^5.0.18",
-		"kysely": "^0.28.12",
+		"kysely": "^0.28.19",
 		"p-queue": "^9.3.0",
 		"pg": "^8.16.3"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260302.0",
 		"@types/pg": "^8.16.0",
-		"esbuild": "^0.28.0",
+		"esbuild": "^0.28.2",
 		"typescript": "^7.0.2",
 		"vitest": "^5.0.0",
 		"wrangler": "^4.148.0"

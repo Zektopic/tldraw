@@ -14,14 +14,14 @@
 		"build-types": "tsc --build"
 	},
 	"dependencies": {
-		"js-cookie": "^3.0.5",
+		"js-cookie": "^3.0.8",
 		"posthog-js": "^1.281.0"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260302.0",
 		"@types/js-cookie": "^3.0.6",
 		"typescript": "^7.0.2",
-		"vite": "^8.0.16",
+		"vite": "^8.3.6",
 		"vitest": "^5.0.0",
 		"wrangler": "^4.148.0"
 	}
