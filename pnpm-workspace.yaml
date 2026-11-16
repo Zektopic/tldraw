@@ -47,14 +47,34 @@ minimumReleaseAgeExclude:
 
 overrides:
   '@types/node': ^22.15.31
-  ws: 8.21.0
-  js-cookie: 3.0.7
-  postcss: 8.5.23
+  '@modelcontextprotocol/sdk': ^1.32.2
+  ws: 8.22.1
+  js-cookie: 3.0.8
+  postcss: 8.5.32
   react-router: 6.30.4
   '@remix-run/router': 1.23.2
   '@octokit/plugin-paginate-rest@11.3.1': 11.4.1
-  'undici@7.24.4': 7.28.0
-  'ip-address@10.1.0': 10.2.0
+  'undici@^7': ^7.30.2
+  'undici@^6': ^6.29.1
+  'ip-address@^10': ^10.7.6
+  'fast-xml-parser@^4': ^4.5.7
+  'fast-xml-parser@^5': ^5.12.0
+  dompurify: ^3.4.17
+  'tinypool@^2': ^2.1.2
+  'shell-quote@^1': ^1.12.0
+  'proxy-addr@^2': ^2.0.8
+  'hono@^4': ^4.13.17
+  '@hono/node-server@^1': ^1.19.18
+  '@hono/node-server@^2': ^2.1.6
+  'body-parser@^2': ^2.4.0
+  'qs@^6': ^6.16.1
+  'tar@^7': ^7.5.22
+  'sharp@^0.35.0': ^0.35.5
+  'prosemirror-view@^1': ^1.42.9
+  vitest: 5.0.5
+  '@vitest/ui': 5.0.5
+  '@vitest/coverage-v8': 5.0.5
+  '@vitest/mocker': 5.0.5
   # `ai` pins 1.9.0 and Zero needs ^1.9.1. Two copies split vitest (an optional peer) into two
   # instances, and tests that import the other copy fail inside expect().
   '@opentelemetry/api': 1.9.1

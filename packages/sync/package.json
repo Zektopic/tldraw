@@ -67,7 +67,7 @@
 		"@tldraw/utils": "workspace:*",
 		"nanoevents": "^7.0.1",
 		"tldraw": "workspace:*",
-		"ws": "^8.18.0"
+		"ws": "^8.22.1"
 	},
 	"peerDependencies": {
 		"react": "^18.2.0 || ^19.2.1",

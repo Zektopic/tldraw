@@ -57,11 +57,11 @@
 		"node": ">=22.12.0"
 	},
 	"dependencies": {
-		"@tiptap/core": "^3.12.1",
-		"@tiptap/extension-mention": "3.13.0",
-		"@tiptap/pm": "^3.12.1",
-		"@tiptap/react": "^3.12.1",
-		"@tiptap/suggestion": "3.13.0",
+		"@tiptap/core": "^3.33.0",
+		"@tiptap/extension-mention": "^3.33.0",
+		"@tiptap/pm": "^3.33.0",
+		"@tiptap/react": "^3.33.0",
+		"@tiptap/suggestion": "^3.33.0",
 		"@tldraw/utils": "workspace:*",
 		"tldraw": "workspace:*"
 	}
