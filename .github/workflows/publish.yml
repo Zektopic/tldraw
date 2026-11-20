@@ -70,7 +70,7 @@ jobs:
       )
     environment: npm deploy
     timeout-minutes: 60
-    runs-on: ubuntu-latest-16-cores-arm-open
+    runs-on: ubuntu-latest
     concurrency:
       group: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/v')) && 'npm-publish' || format('npm-publish-{0}', github.run_id) }}
 
@@ -304,7 +304,7 @@ jobs:
     # sharing its steps with deploy-templates.yml through the composite action.
     environment: deploy-production
     timeout-minutes: 60
-    runs-on: ubuntu-latest-16-cores-arm-open
+    runs-on: ubuntu-latest
     # same group as deploy-templates.yml: a release deploy and a template-change deploy can otherwise
     # race each other onto the same custom domains, and the loser silently wins.
     concurrency:
