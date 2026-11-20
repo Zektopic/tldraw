@@ -24,7 +24,7 @@ jobs:
   test:
     name: 'Staging E2E Tests'
     timeout-minutes: 40
-    runs-on: ubuntu-latest-8-cores-open
+    runs-on: ubuntu-latest
     environment: 'e2e-dotcom'
 
     steps:

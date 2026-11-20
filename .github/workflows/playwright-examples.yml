@@ -58,7 +58,7 @@ jobs:
     needs: check
     if: needs.check.outputs.relevant == 'true'
     timeout-minutes: 20
-    runs-on: ubuntu-latest-32-cores-open
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out code
