@@ -62,7 +62,7 @@ jobs:
     needs: check
     if: needs.check.outputs.relevant == 'true'
     timeout-minutes: 20
-    runs-on: ubuntu-latest-8-cores-open
+    runs-on: ubuntu-latest
     environment: 'e2e-dotcom'
 
     steps:
@@ -85,8 +85,8 @@ jobs:
 
       - name: Run Playwright tests
         run: |
-          echo "CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" > apps/dotcom/sync-worker/.dev.vars
-          echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> apps/dotcom/sync-worker/.dev.vars
+          echo "CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY" > apps/dotcom/sync-worker/.dev.vars
+          echo "CLERK_SECRET_KEY=$CLERK_SECRET_KEY" >> apps/dotcom/sync-worker/.dev.vars
           pnpm e2e-dotcom
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
@@ -95,8 +95,8 @@ jobs:
 
       - name: Run Playwright tests (x10)
         run: |
-          echo "CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" > apps/dotcom/sync-worker/.dev.vars
-          echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> apps/dotcom/sync-worker/.dev.vars
+          echo "CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY" > apps/dotcom/sync-worker/.dev.vars
+          echo "CLERK_SECRET_KEY=$CLERK_SECRET_KEY" >> apps/dotcom/sync-worker/.dev.vars
           pnpm e2e-dotcom-x10
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
